@@ -1,0 +1,94 @@
+﻿'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { Home, MapPin, History, User, Wrench, ClipboardList, Users, Building2, BarChart3, Car } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
+
+const motoristNavItems = [
+  { href: '/motorist', icon: Home, label: 'Accueil' },
+  { href: '/motorist/new-request', icon: MapPin, label: 'Dépannage' },
+  { href: '/motorist/history', icon: History, label: 'Historique' },
+  { href: '/motorist/profile', icon: User, label: 'Profil' },
+];
+
+const garageNavItems = [
+  { href: '/garage', icon: Home, label: 'Accueil' },
+  { href: '/garage/requests', icon: ClipboardList, label: 'Demandes' },
+  { href: '/garage/mechanics', icon: Users, label: 'Équipe' },
+  { href: '/garage/profile', icon: User, label: 'Profil' },
+];
+
+const mechanicNavItems = [
+  { href: '/mechanic', icon: Home, label: 'Accueil' },
+  { href: '/mechanic/missions', icon: Wrench, label: 'Missions' },
+  { href: '/mechanic/history', icon: History, label: 'Historique' },
+  { href: '/mechanic/profile', icon: User, label: 'Profil' },
+];
+
+const adminNavItems = [
+  { href: '/admin', icon: Home, label: 'Dashboard' },
+  { href: '/admin/users', icon: Users, label: 'Utilisateurs' },
+  { href: '/admin/garages', icon: Building2, label: 'Garages' },
+  { href: '/admin/breakdowns', icon: Car, label: 'Interventions' },
+];
+
+export function BottomNav() {
+  const pathname = usePathname();
+  const { user } = useAuthStore();
+
+  const getNavItems = () => {
+    switch (user?.role) {
+      case 'admin':
+        return adminNavItems;
+      case 'garage':
+        return garageNavItems;
+      case 'mechanic':
+        return mechanicNavItems;
+      default:
+        return motoristNavItems;
+    }
+  };
+
+  const navItems = getNavItems();
+  const isAdmin = user?.role === 'admin';
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-40 glass border-t md:hidden">
+      <div className="flex items-center justify-around h-16 px-2">
+        {navItems.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+          
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex flex-col items-center justify-center w-16 h-14 rounded-xl transition-colors',
+                isActive 
+                  ? isAdmin ? 'text-red-600' : 'text-primary' 
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <div className="relative">
+                <item.icon className="h-5 w-5" />
+                {isActive && (
+                  <motion.div
+                    layoutId="bottomNavIndicator"
+                    className={cn(
+                      "absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full",
+                      isAdmin ? 'bg-red-600' : 'bg-primary'
+                    )}
+                  />
+                )}
+              </div>
+              <span className="text-[10px] mt-1 font-medium">{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

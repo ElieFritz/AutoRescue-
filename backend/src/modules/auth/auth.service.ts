@@ -1,0 +1,262 @@
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { SupabaseService } from '../../database/supabase.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async register(dto: RegisterDto) {
+    const { email, password, firstName, lastName, phone, role } = dto;
+
+    // Use admin client to create user with email already confirmed
+    const { data: authData, error: authError } = await this.supabase.admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // Auto-confirm email
+      user_metadata: {
+        first_name: firstName,
+        last_name: lastName,
+        role: role || 'motorist',
+      },
+    });
+
+    if (authError) {
+      if (authError.message.includes('already been registered') || authError.message.includes('already exists')) {
+        throw new ConflictException('Cet email est deja utilise');
+      }
+      throw new BadRequestException(authError.message);
+    }
+
+    if (!authData.user) {
+      throw new BadRequestException('Erreur lors de la creation du compte');
+    }
+
+    // Wait for the trigger to create the profile
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Update profile with phone if provided
+    if (phone) {
+      await this.supabase.admin
+        .from('profiles')
+        .update({ phone })
+        .eq('id', authData.user.id);
+    }
+
+    // Get the profile
+    const { data: profile } = await this.supabase.admin
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single();
+
+    // Generate tokens
+    const tokens = this.generateTokens(authData.user.id, email, profile?.role || 'motorist');
+
+    return {
+      user: profile,
+      ...tokens,
+    };
+  }
+
+  async login(dto: LoginDto) {
+    const { email, password } = dto;
+
+    // Use standard client for login
+    const { data: authData, error: authError } = await this.supabase.client.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError || !authData.user) {
+      throw new UnauthorizedException('Email ou mot de passe incorrect');
+    }
+
+    // Get profile using admin client to bypass RLS
+    const { data: profile } = await this.supabase.admin
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single();
+
+    if (!profile) {
+      throw new UnauthorizedException('Profil non trouve');
+    }
+
+    if (!profile.is_active) {
+      throw new UnauthorizedException('Compte desactive');
+    }
+
+    const tokens = this.generateTokens(authData.user.id, email, profile.role);
+
+    return {
+      user: profile,
+      ...tokens,
+    };
+  }
+
+  async forgotPassword(email: string) {
+    const redirectUrl = this.configService.get<string>('FRONTEND_URL') + '/reset-password';
+    
+    const { error } = await this.supabase.client.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectUrl,
+    });
+
+    if (error) {
+      console.error('Password reset error:', error.message);
+    }
+
+    // Always return success to prevent email enumeration
+    return {
+      message: 'Si cet email existe, un lien de reinitialisation a ete envoye',
+    };
+  }
+
+  async resetPassword(newPassword: string, accessToken: string) {
+    // Set the session with the access token from the reset link
+    const { error: sessionError } = await this.supabase.client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: '',
+    });
+
+    if (sessionError) {
+      throw new BadRequestException('Lien de reinitialisation invalide ou expire');
+    }
+
+    // Update the password
+    const { error: updateError } = await this.supabase.client.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (updateError) {
+      throw new BadRequestException('Erreur lors de la mise a jour du mot de passe');
+    }
+
+    return {
+      message: 'Mot de passe mis a jour avec succes',
+    };
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    // Get user email first
+    const { data: profile } = await this.supabase.admin
+      .from('profiles')
+      .select('email')
+      .eq('id', userId)
+      .single();
+
+    if (!profile) {
+      throw new UnauthorizedException('Utilisateur non trouve');
+    }
+
+    // Verify current password by attempting to sign in
+    const { error: signInError } = await this.supabase.client.auth.signInWithPassword({
+      email: profile.email,
+      password: currentPassword,
+    });
+
+    if (signInError) {
+      throw new UnauthorizedException('Mot de passe actuel incorrect');
+    }
+
+    // Update to new password using admin API
+    const { error: updateError } = await this.supabase.admin.auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+
+    if (updateError) {
+      throw new BadRequestException('Erreur lors de la mise a jour du mot de passe');
+    }
+
+    return {
+      message: 'Mot de passe modifie avec succes',
+    };
+  }
+
+  async refreshToken(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+
+      const { data: profile } = await this.supabase.admin
+        .from('profiles')
+        .select('*')
+        .eq('id', payload.sub)
+        .single();
+
+      if (!profile) {
+        throw new UnauthorizedException('Utilisateur non trouve');
+      }
+
+      return this.generateTokens(payload.sub, profile.email, profile.role);
+    } catch (error) {
+      throw new UnauthorizedException('Token de rafraichissement invalide');
+    }
+  }
+
+  async getAllUsers() {
+    const { data, error } = await this.supabase.admin
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching users:', error);
+      return [];
+    }
+
+    return data || [];
+  }
+
+  async updateUserRole(userId: string, newRole: string) {
+    const validRoles = ['admin', 'motorist', 'garage', 'mechanic'];
+    if (!validRoles.includes(newRole)) {
+      throw new BadRequestException('Role invalide');
+    }
+
+    const { data, error } = await this.supabase.admin
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException('Erreur lors de la mise a jour du role');
+    }
+
+    return data;
+  }
+
+  private generateTokens(userId: string, email: string, role: string) {
+    const payload = { sub: userId, email, role };
+
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION', '15m'),
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  async validateUser(userId: string) {
+    const { data: profile } = await this.supabase.admin
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    return profile;
+  }
+}

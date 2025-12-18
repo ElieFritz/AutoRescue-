@@ -1,0 +1,109 @@
+﻿'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { motion } from 'framer-motion';
+import {
+  Home,
+  MapPin,
+  History,
+  User,
+  Wrench,
+  ClipboardList,
+  Users,
+  Car,
+  Settings,
+  CreditCard,
+  FileText,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
+
+const motoristNavItems = [
+  { href: '/motorist', icon: Home, label: 'Tableau de bord' },
+  { href: '/motorist/new-request', icon: MapPin, label: 'Nouveau d�pannage' },
+  { href: '/motorist/vehicles', icon: Car, label: 'Mes v�hicules' },
+  { href: '/motorist/history', icon: History, label: 'Historique' },
+  { href: '/motorist/payments', icon: CreditCard, label: 'Paiements' },
+  { href: '/motorist/profile', icon: User, label: 'Mon profil' },
+];
+
+const garageNavItems = [
+  { href: '/garage', icon: Home, label: 'Tableau de bord' },
+  { href: '/garage/requests', icon: ClipboardList, label: 'Demandes' },
+  { href: '/garage/mechanics', icon: Users, label: 'M�caniciens' },
+  { href: '/garage/history', icon: History, label: 'Historique' },
+  { href: '/garage/reports', icon: FileText, label: 'Rapports' },
+  { href: '/garage/settings', icon: Settings, label: 'Param�tres' },
+];
+
+const mechanicNavItems = [
+  { href: '/mechanic', icon: Home, label: 'Tableau de bord' },
+  { href: '/mechanic/missions', icon: Wrench, label: 'Missions actives' },
+  { href: '/mechanic/history', icon: History, label: 'Historique' },
+  { href: '/mechanic/profile', icon: User, label: 'Mon profil' },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const { user } = useAuthStore();
+
+  const navItems = user?.role === 'garage'
+    ? garageNavItems
+    : user?.role === 'mechanic'
+    ? mechanicNavItems
+    : motoristNavItems;
+
+  return (
+    <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 border-r bg-card">
+      {/* Logo */}
+      <div className="p-6 border-b">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-10 h-10 bg-gradient-to-br from-rescue-500 to-rescue-700 rounded-xl flex items-center justify-center">
+            <Car className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-xl font-bold">
+            Auto<span className="text-rescue-600">Rescue</span>
+          </span>
+        </Link>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navItems.map((item) => {
+          const isActive = pathname === item.href || 
+            (item.href !== '/' + user?.role && pathname.startsWith(item.href));
+          
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-3 px-4 py-3 rounded-xl transition-all',
+                isActive
+                  ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+            >
+              <item.icon className="h-5 w-5" />
+              <span className="font-medium">{item.label}</span>
+              {isActive && (
+                <motion.div
+                  layoutId="sidebarIndicator"
+                  className="absolute left-0 w-1 h-8 bg-primary rounded-r-full"
+                />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div className="p-4 border-t">
+        <div className="text-xs text-muted-foreground text-center">
+          AutoRescue v1.0.0
+        </div>
+      </div>
+    </aside>
+  );
+}

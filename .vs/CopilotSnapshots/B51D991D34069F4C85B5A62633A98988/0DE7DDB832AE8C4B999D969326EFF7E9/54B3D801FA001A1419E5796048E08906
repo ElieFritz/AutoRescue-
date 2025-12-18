@@ -1,0 +1,73 @@
+﻿import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+
+// Configuration
+import configuration from './config/configuration';
+import { validate } from './config/env.validation';
+
+// Database
+import { DatabaseModule } from './database/database.module';
+
+// Guards
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
+
+// Feature Modules
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { VehiclesModule } from './modules/vehicles/vehicles.module';
+import { GaragesModule } from './modules/garages/garages.module';
+import { MechanicsModule } from './modules/mechanics/mechanics.module';
+import { BreakdownsModule } from './modules/breakdowns/breakdowns.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+
+@Module({
+  imports: [
+    // Configuration
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+      validate,
+      envFilePath: ['.env.local', '.env'],
+    }),
+
+    // Rate limiting
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minute
+        limit: 100, // 100 requests per minute
+      },
+    ]),
+
+    // Database
+    DatabaseModule,
+
+    // Feature modules
+    AuthModule,
+    UsersModule,
+    VehiclesModule,
+    GaragesModule,
+    MechanicsModule,
+    BreakdownsModule,
+    PaymentsModule,
+    ReportsModule,
+    NotificationsModule,
+  ],
+  providers: [
+    // Global JWT guard
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    // Global roles guard
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
+})
+export class AppModule {}

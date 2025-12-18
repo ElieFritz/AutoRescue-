@@ -1,0 +1,244 @@
+﻿/**
+ * Script pour corriger les caractères mal encodés dans les fichiers frontend
+ * Usage: node scripts/fix-encoding.js
+ * 
+ * ATTENTION: Ce script corrige uniquement les patterns spécifiques de mots français
+ * mal encodés. Il ne remplace PAS les caractères isolés pour éviter de casser
+ * le code JavaScript/TypeScript.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// Répertoires à scanner
+const DIRS_TO_SCAN = [
+  path.join(__dirname, '..', 'app'),
+  path.join(__dirname, '..', 'components'),
+  path.join(__dirname, '..', 'lib'),
+  path.join(__dirname, '..', 'stores'),
+];
+
+// Mapping des mots mal encodés vers les mots corrects
+// IMPORTANT: Seulement des mots complets, pas de patterns partiels
+const WORD_REPLACEMENTS = {
+  // Mots français courants mal encodés (format: pattern complet)
+  'Dépannage': 'Depannage',
+  'dépannage': 'depannage',
+  'géolocalisé': 'geolocalise',
+  'Géolocalisation': 'Geolocalisation',
+  'géolocalisation': 'geolocalisation',
+  'sécurisé': 'securise',
+  'sécurité': 'securite',
+  'Mécanicien': 'Mecanicien',
+  'mécanicien': 'mecanicien',
+  'Mécaniciens': 'Mecaniciens',
+  'mécaniciens': 'mecaniciens',
+  'véhicule': 'vehicule',
+  'véhicules': 'vehicules',
+  'Véhicule': 'Vehicule',
+  'Véhicules': 'Vehicules',
+  'Paramètres': 'Parametres',
+  'paramètres': 'parametres',
+  'Créer': 'Creer',
+  'créer': 'creer',
+  'créé': 'cree',
+  'Créé': 'Cree',
+  'utilisé': 'utilise',
+  'Utilisé': 'Utilise',
+  'réel': 'reel',
+  'Réel': 'Reel',
+  'général': 'general',
+  'Général': 'General',
+  'réussi': 'reussi',
+  'Réussi': 'Reussi',
+  'envoyé': 'envoye',
+  'Envoyé': 'Envoye',
+  'terminé': 'termine',
+  'Terminé': 'Termine',
+  'accepté': 'accepte',
+  'Accepté': 'Accepte',
+  'refusé': 'refuse',
+  'Refusé': 'Refuse',
+  'annulé': 'annule',
+  'Annulé': 'Annule',
+  'démarrer': 'demarrer',
+  'Démarrer': 'Demarrer',
+  'Équipe': 'Equipe',
+  'équipe': 'equipe',
+  'prénom': 'prenom',
+  'Prénom': 'Prenom',
+  'numéro': 'numero',
+  'Numéro': 'Numero',
+  'téléphone': 'telephone',
+  'Téléphone': 'Telephone',
+  'problème': 'probleme',
+  'Problème': 'Probleme',
+  'système': 'systeme',
+  'Système': 'Systeme',
+  'complété': 'complete',
+  'Complété': 'Complete',
+  'terminée': 'terminee',
+  'Terminée': 'Terminee',
+  'déjà': 'deja',
+  'Déjà': 'Deja',
+  'Déconnexion': 'Deconnexion',
+  'déconnexion': 'deconnexion',
+  'supprimé': 'supprime',
+  'Supprimé': 'Supprime',
+  'modifié': 'modifie',
+  'Modifié': 'Modifie',
+  'ajouté': 'ajoute',
+  'Ajouté': 'Ajoute',
+  'sélectionner': 'selectionner',
+  'Sélectionner': 'Selectionner',
+  'sélectionné': 'selectionne',
+  'Sélectionné': 'Selectionne',
+  'définir': 'definir',
+  'Définir': 'Definir',
+  'défini': 'defini',
+  'Défini': 'Defini',
+  'réinitialiser': 'reinitialiser',
+  'Réinitialiser': 'Reinitialiser',
+  'réinitialisé': 'reinitialise',
+  'Réinitialisé': 'Reinitialise',
+  'vérifier': 'verifier',
+  'Vérifier': 'Verifier',
+  'vérifié': 'verifie',
+  'Vérifié': 'Verifie',
+  'préférence': 'preference',
+  'Préférence': 'Preference',
+  'récent': 'recent',
+  'Récent': 'Recent',
+  'récente': 'recente',
+  'Récente': 'Recente',
+  'résumé': 'resume',
+  'Résumé': 'Resume',
+  'détail': 'detail',
+  'Détail': 'Detail',
+  'détails': 'details',
+  'Détails': 'Details',
+  'activité': 'activite',
+  'Activité': 'Activite',
+  'spécialité': 'specialite',
+  'Spécialité': 'Specialite',
+  'spécialités': 'specialites',
+  'Spécialités': 'Specialites',
+  'électrique': 'electrique',
+  'Électrique': 'Electrique',
+  'évaluation': 'evaluation',
+  'Évaluation': 'Evaluation',
+  
+  // Caractères de remplacement Unicode
+  'ï¿½': '',
+  '\ufffd': '',
+};
+
+// Extensions de fichiers à traiter
+const EXTENSIONS = ['.tsx', '.ts', '.js', '.jsx'];
+
+// Compteurs
+let filesScanned = 0;
+let filesModified = 0;
+let totalReplacements = 0;
+
+/**
+ * Récursivement scanner un répertoire
+ */
+function scanDirectory(dir) {
+  if (!fs.existsSync(dir)) {
+    console.log(`Directory not found: ${dir}`);
+    return;
+  }
+
+  const files = fs.readdirSync(dir);
+
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+
+    if (stat.isDirectory()) {
+      if (file !== 'node_modules' && file !== '.next') {
+        scanDirectory(filePath);
+      }
+    } else if (EXTENSIONS.includes(path.extname(file))) {
+      processFile(filePath);
+    }
+  }
+}
+
+/**
+ * Traiter un fichier
+ */
+function processFile(filePath) {
+  filesScanned++;
+  
+  try {
+    let content = fs.readFileSync(filePath, 'utf8');
+    let originalContent = content;
+    let replacementCount = 0;
+
+    // Appliquer les remplacements de mots complets uniquement
+    for (const [badWord, goodWord] of Object.entries(WORD_REPLACEMENTS)) {
+      // Utiliser word boundaries pour ne remplacer que les mots complets
+      const regex = new RegExp(escapeRegex(badWord), 'g');
+      const matches = content.match(regex);
+      if (matches) {
+        replacementCount += matches.length;
+        content = content.replace(regex, goodWord);
+      }
+    }
+
+    // Si des modifications ont été faites
+    if (content !== originalContent) {
+      fs.writeFileSync(filePath, content, 'utf8');
+      filesModified++;
+      totalReplacements += replacementCount;
+      console.log(`✓ Fixed: ${path.relative(process.cwd(), filePath)} (${replacementCount} replacements)`);
+    }
+  } catch (error) {
+    console.error(`✗ Error processing ${filePath}: ${error.message}`);
+  }
+}
+
+/**
+ * Échapper les caractères spéciaux pour regex
+ */
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Main
+ */
+function main() {
+  console.log('='.repeat(60));
+  console.log('Fixing encoding issues in frontend files...');
+  console.log('='.repeat(60));
+  console.log('');
+  console.log('NOTE: This script only replaces complete French words,');
+  console.log('not partial patterns that could break JavaScript code.');
+  console.log('');
+
+  // Scanner les répertoires
+  for (const dir of DIRS_TO_SCAN) {
+    const dirName = path.basename(dir);
+    console.log(`Scanning ${dirName} directory...`);
+    scanDirectory(dir);
+  }
+
+  console.log('');
+  console.log('='.repeat(60));
+  console.log('Summary:');
+  console.log(`  Files scanned: ${filesScanned}`);
+  console.log(`  Files modified: ${filesModified}`);
+  console.log(`  Total replacements: ${totalReplacements}`);
+  console.log('='.repeat(60));
+
+  if (filesModified > 0) {
+    console.log('\n✓ Encoding issues fixed successfully!');
+  } else {
+    console.log('\n✓ No encoding issues found.');
+  }
+}
+
+main();

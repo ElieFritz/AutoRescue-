@@ -1,0 +1,45 @@
+﻿import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { VehiclesService } from './vehicles.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../../common/enums';
+
+@ApiTags('Vehicles')
+@ApiBearerAuth('access-token')
+@Controller('vehicles')
+export class VehiclesController {
+  constructor(private readonly vehiclesService: VehiclesService) {}
+
+  @Get()
+  @Roles(UserRole.MOTORIST, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Lister mes véhicules' })
+  async findAll(@CurrentUser() user: any) {
+    return this.vehiclesService.findAll(user.id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtenir un véhicule' })
+  async findOne(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.vehiclesService.findOne(id, user.id);
+  }
+
+  @Post()
+  @Roles(UserRole.MOTORIST, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Ajouter un véhicule' })
+  async create(@Body() createData: any, @CurrentUser() user: any) {
+    return this.vehiclesService.create(user.id, createData);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Modifier un véhicule' })
+  async update(@Param('id') id: string, @Body() updateData: any, @CurrentUser() user: any) {
+    return this.vehiclesService.update(id, user.id, updateData);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Supprimer un véhicule' })
+  async remove(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.vehiclesService.remove(id, user.id);
+  }
+}

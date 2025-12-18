@@ -1,0 +1,95 @@
+﻿import { Controller, Post, Get, Patch, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthService } from './auth.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { Public } from '../../common/decorators/public.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+
+@ApiTags('Auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Public()
+  @Post('register')
+  @ApiOperation({ summary: 'Creer un nouveau compte' })
+  @ApiResponse({ status: 201, description: 'Compte cree avec succes' })
+  @ApiResponse({ status: 409, description: 'Email deja utilise' })
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
+
+  @Public()
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Se connecter' })
+  @ApiResponse({ status: 200, description: 'Connexion reussie' })
+  @ApiResponse({ status: 401, description: 'Identifiants invalides' })
+  async login(@Body() dto: LoginDto) {
+    return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rafraichir les tokens' })
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshToken(dto.refreshToken);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Demander une reinitialisation de mot de passe' })
+  @ApiResponse({ status: 200, description: 'Email envoye si le compte existe' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reinitialiser le mot de passe avec le token' })
+  @ApiResponse({ status: 200, description: 'Mot de passe reinitialise' })
+  @ApiResponse({ status: 400, description: 'Token invalide ou expire' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.newPassword, dto.accessToken);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Changer son mot de passe (utilisateur connecte)' })
+  @ApiResponse({ status: 200, description: 'Mot de passe change' })
+  @ApiResponse({ status: 401, description: 'Mot de passe actuel incorrect' })
+  async changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+  }
+
+  @Get('users')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Lister tous les utilisateurs (admin)' })
+  async getAllUsers(@CurrentUser() user: any) {
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      return [];
+    }
+    return this.authService.getAllUsers();
+  }
+
+  @Patch('users/:id/role')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Changer le role d\'un utilisateur (admin)' })
+  async updateUserRole(@Param('id') id: string, @Body() body: { role: string }, @CurrentUser() user: any) {
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      return { error: 'Non autorise' };
+    }
+    return this.authService.updateUserRole(id, body.role);
+  }
+}

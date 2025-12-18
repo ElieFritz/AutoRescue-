@@ -1,0 +1,159 @@
+﻿'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { motion } from 'framer-motion';
+import {
+  Home,
+  MapPin,
+  History,
+  User,
+  Wrench,
+  ClipboardList,
+  Users,
+  Car,
+  Settings,
+  CreditCard,
+  FileText,
+  Building2,
+  BarChart3,
+  Shield,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
+
+const motoristNavItems = [
+  { href: '/motorist', icon: Home, label: 'Tableau de bord' },
+  { href: '/motorist/new-request', icon: MapPin, label: 'Nouveau depannage' },
+  { href: '/motorist/vehicles', icon: Car, label: 'Mes vehicules' },
+  { href: '/motorist/history', icon: History, label: 'Historique' },
+  { href: '/motorist/payments', icon: CreditCard, label: 'Paiements' },
+  { href: '/motorist/profile', icon: User, label: 'Mon profil' },
+];
+
+const garageNavItems = [
+  { href: '/garage', icon: Home, label: 'Tableau de bord' },
+  { href: '/garage/requests', icon: ClipboardList, label: 'Demandes' },
+  { href: '/garage/mechanics', icon: Users, label: 'Mecaniciens' },
+  { href: '/garage/history', icon: History, label: 'Historique' },
+  { href: '/garage/reports', icon: FileText, label: 'Rapports' },
+  { href: '/garage/settings', icon: Settings, label: 'Parametres' },
+];
+
+const mechanicNavItems = [
+  { href: '/mechanic', icon: Home, label: 'Tableau de bord' },
+  { href: '/mechanic/missions', icon: Wrench, label: 'Missions actives' },
+  { href: '/mechanic/history', icon: History, label: 'Historique' },
+  { href: '/mechanic/profile', icon: User, label: 'Mon profil' },
+];
+
+const adminNavItems = [
+  { href: '/admin', icon: Home, label: 'Dashboard' },
+  { href: '/admin/users', icon: Users, label: 'Utilisateurs' },
+  { href: '/admin/garages', icon: Building2, label: 'Garages' },
+  { href: '/admin/breakdowns', icon: Car, label: 'Interventions' },
+  { href: '/admin/reports', icon: BarChart3, label: 'Rapports' },
+  { href: '/admin/settings', icon: Settings, label: 'Parametres' },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const { user } = useAuthStore();
+
+  const getNavItems = () => {
+    switch (user?.role) {
+      case 'admin':
+        return adminNavItems;
+      case 'garage':
+        return garageNavItems;
+      case 'mechanic':
+        return mechanicNavItems;
+      default:
+        return motoristNavItems;
+    }
+  };
+
+  const navItems = getNavItems();
+  const rolePrefix = user?.role === 'admin' ? '/admin' : `/${user?.role || 'motorist'}`;
+
+  return (
+    <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 border-r bg-card">
+      {/* Logo */}
+      <div className="p-6 border-b">
+        <Link href={rolePrefix} className="flex items-center gap-2">
+          <div className={cn(
+            "w-10 h-10 rounded-xl flex items-center justify-center",
+            user?.role === 'admin' 
+              ? "bg-gradient-to-br from-red-500 to-red-700"
+              : "bg-gradient-to-br from-rescue-500 to-rescue-700"
+          )}>
+            {user?.role === 'admin' ? (
+              <Shield className="w-5 h-5 text-white" />
+            ) : (
+              <Car className="w-5 h-5 text-white" />
+            )}
+          </div>
+          <div>
+            <span className="text-xl font-bold">
+              {user?.role === 'admin' ? (
+                <>Auto<span className="text-red-600">Admin</span></>
+              ) : (
+                <>Auto<span className="text-rescue-600">Rescue</span></>
+              )}
+            </span>
+            {user?.role === 'admin' && (
+              <p className="text-xs text-muted-foreground">Administration</p>
+            )}
+          </div>
+        </Link>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navItems.map((item) => {
+          const isActive = pathname === item.href || 
+            (item.href !== rolePrefix && pathname.startsWith(item.href));
+          
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative',
+                isActive
+                  ? user?.role === 'admin'
+                    ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
+                    : 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+            >
+              <item.icon className="h-5 w-5" />
+              <span className="font-medium">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* User info */}
+      <div className="p-4 border-t">
+        <div className="flex items-center gap-3 mb-3">
+          <div className={cn(
+            "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold",
+            user?.role === 'admin' 
+              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+              : "bg-rescue-100 text-rescue-700 dark:bg-rescue-900/30 dark:text-rescue-400"
+          )}>
+            {user?.first_name?.[0]}{user?.last_name?.[0]}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{user?.first_name} {user?.last_name}</p>
+            <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+          </div>
+        </div>
+        <div className="text-xs text-muted-foreground text-center">
+          AutoRescue v1.0.0
+        </div>
+      </div>
+    </aside>
+  );
+}

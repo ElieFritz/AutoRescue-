@@ -1,0 +1,92 @@
+﻿import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { SupabaseService } from '../../database/supabase.service';
+
+@Injectable()
+export class BreakdownsService {
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async findAll(userId: string, role: string) {
+    let query = this.supabase.client
+      .from('breakdowns')
+      .select('*, motorist:profiles!motorist_id(*), vehicle:vehicles(*), garage:garages(*)')
+      .order('created_at', { ascending: false });
+
+    if (role === 'motorist') {
+      query = query.eq('motorist_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async findOne(id: string) {
+    const { data, error } = await this.supabase.client
+      .from('breakdowns')
+      .select('*, motorist:profiles!motorist_id(*), vehicle:vehicles(*), garage:garages(*), mechanic:mechanics(*)')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) throw new NotFoundException('Demande non trouv�e');
+    return data;
+  }
+
+  async create(motoristId: string, createData: any) {
+    const { data, error } = await this.supabase.client
+      .from('breakdowns')
+      .insert({
+        ...createData,
+        motorist_id: motoristId,
+        status: 'pending'
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async updateStatus(id: string, status: string, userId: string) {
+    const { data, error } = await this.supabase.client
+      .from('breakdowns')
+      .update({ status })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async accept(id: string, garageId: string) {
+    const { data, error } = await this.supabase.client
+      .from('breakdowns')
+      .update({
+        garage_id: garageId,
+        status: 'accepted',
+        accepted_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async cancel(id: string, userId: string, reason: string) {
+    const { data, error } = await this.supabase.client
+      .from('breakdowns')
+      .update({
+        status: 'cancelled',
+        cancelled_by: userId,
+        cancellation_reason: reason
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+}

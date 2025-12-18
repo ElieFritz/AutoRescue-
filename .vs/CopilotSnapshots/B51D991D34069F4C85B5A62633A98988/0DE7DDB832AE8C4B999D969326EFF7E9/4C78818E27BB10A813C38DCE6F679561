@@ -1,0 +1,134 @@
+﻿import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Database } from './types/database.types';
+
+@Injectable()
+export class SupabaseService implements OnModuleInit {
+  private readonly logger = new Logger(SupabaseService.name);
+  private supabase: SupabaseClient<Database>;
+  private supabaseAdmin: SupabaseClient<Database>;
+
+  constructor(private readonly configService: ConfigService) {}
+
+  async onModuleInit() {
+    const supabaseUrl = this.configService.get<string>('supabase.url');
+    const supabaseAnonKey = this.configService.get<string>('supabase.anonKey');
+    const supabaseServiceRoleKey = this.configService.get<string>('supabase.serviceRoleKey');
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+      throw new Error('Missing Supabase configuration');
+    }
+
+    // Client standard (respect RLS policies)
+    this.supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: false,
+      },
+    });
+
+    // Client admin (bypass RLS policies)
+    this.supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+
+    this.logger.log('Supabase clients initialized successfully');
+  }
+
+  /**
+   * Get the standard Supabase client (respects RLS)
+   */
+  get client(): SupabaseClient<Database> {
+    return this.supabase;
+  }
+
+  /**
+   * Get the admin Supabase client (bypasses RLS)
+   * Use with caution!
+   */
+  get admin(): SupabaseClient<Database> {
+    return this.supabaseAdmin;
+  }
+
+  /**
+   * Get a client with user context for RLS
+   */
+  getClientWithAuth(accessToken: string): SupabaseClient<Database> {
+    const supabaseUrl = this.configService.get<string>('supabase.url')!;
+    const supabaseAnonKey = this.configService.get<string>('supabase.anonKey')!;
+
+    return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+  }
+
+  /**
+   * Get public URL for a file in storage
+   */
+  getPublicUrl(bucket: string, path: string): string {
+    const { data } = this.supabase.storage.from(bucket).getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  /**
+   * Upload a file to storage
+   */
+  async uploadFile(
+    bucket: string,
+    path: string,
+    file: Buffer,
+    contentType: string,
+  ): Promise<string> {
+    const { data, error } = await this.supabaseAdmin.storage.from(bucket).upload(path, file, {
+      contentType,
+      upsert: true,
+    });
+
+    if (error) {
+      this.logger.error(`Failed to upload file: ${error.message}`);
+      throw error;
+    }
+
+    return this.getPublicUrl(bucket, data.path);
+  }
+
+  /**
+   * Delete a file from storage
+   */
+  async deleteFile(bucket: string, path: string): Promise<void> {
+    const { error } = await this.supabaseAdmin.storage.from(bucket).remove([path]);
+
+    if (error) {
+      this.logger.error(`Failed to delete file: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a signed URL for private file access
+   */
+  async createSignedUrl(bucket: string, path: string, expiresIn = 3600): Promise<string> {
+    const { data, error } = await this.supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUrl(path, expiresIn);
+
+    if (error) {
+      this.logger.error(`Failed to create signed URL: ${error.message}`);
+      throw error;
+    }
+
+    return data.signedUrl;
+  }
+}

@@ -1,0 +1,274 @@
+﻿'use client';
+
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Users, Search, MoreVertical, Mail, Phone, ShieldAlert } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useAuthStore } from '@/stores/auth-store';
+import { getInitials, formatDate } from '@/lib/utils';
+import { toast } from 'sonner';
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  motorist: 'Automobiliste',
+  garage: 'Garage',
+  mechanic: 'Mecanicien',
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  admin: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  motorist: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  garage: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  mechanic: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+};
+
+export default function AdminUsersPage() {
+  const { user: currentUser } = useAuthStore();
+  const [users, setUsers] = useState<any[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+
+  // Check if current user is admin before making API call
+  const isAdmin = currentUser?.role === 'admin';
+
+  useEffect(() => {
+    // Only fetch if user is admin
+    if (!isAdmin) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem('access_token') || '';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+        
+        const res = await fetch(`${baseUrl}/auth/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setUsers(Array.isArray(data) ? data : []);
+          setFilteredUsers(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Error fetching users:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, [isAdmin]);
+
+  useEffect(() => {
+    let result = users;
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(u => 
+        u.first_name?.toLowerCase().includes(query) ||
+        u.last_name?.toLowerCase().includes(query) ||
+        u.email?.toLowerCase().includes(query)
+      );
+    }
+    
+    if (roleFilter !== 'all') {
+      result = result.filter(u => u.role === roleFilter);
+    }
+    
+    setFilteredUsers(result);
+  }, [searchQuery, roleFilter, users]);
+
+  const handleChangeRole = async (userId: string, newRole: string) => {
+    try {
+      const token = localStorage.getItem('access_token') || '';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+      
+      const res = await fetch(`${baseUrl}/auth/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ role: newRole }),
+      });
+      
+      if (res.ok) {
+        setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+        toast.success('Role mis a jour');
+      } else {
+        toast.error('Erreur lors de la mise a jour');
+      }
+    } catch (error) {
+      toast.error('Erreur lors de la mise a jour');
+    }
+  };
+
+  // Show access denied if not admin
+  if (!isAdmin && !isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <ShieldAlert className="h-16 w-16 text-red-500 mb-4" />
+        <h2 className="text-xl font-bold mb-2">Acces refuse</h2>
+        <p className="text-muted-foreground text-center">
+          Vous devez etre administrateur pour acceder a cette page.
+        </p>
+        <p className="text-sm text-muted-foreground mt-2">
+          Role actuel: {ROLE_LABELS[currentUser?.role || ''] || currentUser?.role || 'Non defini'}
+        </p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="flex gap-4">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-20" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Gestion des utilisateurs</h1>
+        <p className="text-muted-foreground">{users.length} utilisateurs inscrits</p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher par nom ou email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Filtrer par role" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les roles</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="motorist">Automobiliste</SelectItem>
+            <SelectItem value="garage">Garage</SelectItem>
+            <SelectItem value="mechanic">Mecanicien</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filteredUsers.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Users className="h-16 w-16 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">Aucun utilisateur</h3>
+            <p className="text-muted-foreground">Aucun utilisateur ne correspond a votre recherche</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {filteredUsers.map((user, index) => (
+                <motion.div
+                  key={user.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="flex items-center justify-between p-4 hover:bg-accent/50"
+                >
+                  <div className="flex items-center gap-4">
+                    <Avatar>
+                      <AvatarImage src={user.avatar_url} />
+                      <AvatarFallback className="bg-rescue-100 text-rescue-700">
+                        {getInitials(user.first_name, user.last_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">{user.first_name} {user.last_name}</p>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          {user.email}
+                        </span>
+                        {user.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {user.phone}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge className={ROLE_COLORS[user.role] || ''}>
+                      {ROLE_LABELS[user.role] || user.role}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(user.created_at)}
+                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'admin')}>
+                          Promouvoir admin
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'garage')}>
+                          Definir comme garage
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'mechanic')}>
+                          Definir comme mecanicien
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'motorist')}>
+                          Definir comme automobiliste
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

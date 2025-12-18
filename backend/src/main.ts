@@ -1,0 +1,121 @@
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import helmet from 'helmet';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+
+  // Security middleware
+  app.use(helmet());
+
+  // CORS configuration - more permissive for development
+  const isDev = configService.get<string>('NODE_ENV', 'development') === 'development';
+  
+  app.enableCors({
+    origin: isDev 
+      ? ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001']
+      : configService.get<string>('FRONTEND_URL', 'http://localhost:3000'),
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: true,
+  });
+
+  // API prefix and versioning
+  const apiPrefix = configService.get<string>('API_PREFIX', 'api');
+  app.setGlobalPrefix(apiPrefix);
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+
+  // Global validation pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
+
+  // Swagger documentation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('AutoRescue API')
+    .setDescription(
+      `
+      API de la plateforme AutoRescue - Dépannage automobile géolocalisé
+      
+      ## Fonctionnalités
+      - Authentification JWT avec refresh tokens
+      - Gestion des utilisateurs (automobilistes, garages, mécaniciens)
+      - Géolocalisation et recherche de garages
+      - Gestion des demandes de dépannage
+      - Système de paiement NotchPay
+      - Notifications en temps réel (WebSocket)
+      
+      ## Rôles
+      - **motorist**: Automobiliste
+      - **garage**: Propriétaire de garage
+      - **mechanic**: Mécanicien/Garagiste terrain
+      - **admin**: Administrateur plateforme
+    `,
+    )
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        description: 'Enter JWT token',
+        in: 'header',
+      },
+      'access-token',
+    )
+    .addTag('Auth', 'Authentification et gestion des sessions')
+    .addTag('Users', 'Gestion des profils utilisateurs')
+    .addTag('Vehicles', 'Gestion des véhicules')
+    .addTag('Garages', 'Gestion des garages et géolocalisation')
+    .addTag('Mechanics', 'Gestion des mécaniciens')
+    .addTag('Breakdowns', 'Gestion des demandes de dépannage')
+    .addTag('Payments', 'Paiements et transactions')
+    .addTag('Reports', 'Rapports de mission')
+    .addTag('Notifications', 'Notifications en temps réel')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      tagsSorter: 'alpha',
+      operationsSorter: 'alpha',
+    },
+    customSiteTitle: 'AutoRescue API Documentation',
+  });
+
+  // Start server
+  const port = configService.get<number>('PORT', 3001);
+  await app.listen(port);
+
+  console.log(`
+  ?????????????????????????????????????????????????????????????
+  ?                                                           ?
+  ?   ?? AutoRescue API Server                                ?
+  ?                                                           ?
+  ?   Environment: ${configService.get<string>('NODE_ENV', 'development').padEnd(40)}?
+  ?   Port: ${port.toString().padEnd(50)}?
+  ?   API: http://localhost:${port}/${apiPrefix}/v1                       ?
+  ?   Docs: http://localhost:${port}/docs                          ?
+  ?   CORS: ${isDev ? 'Development mode (permissive)' : 'Production mode'}                                 ?
+  ?                                                           ?
+  ?????????????????????????????????????????????????????????????
+  `);
+}
+
+bootstrap();

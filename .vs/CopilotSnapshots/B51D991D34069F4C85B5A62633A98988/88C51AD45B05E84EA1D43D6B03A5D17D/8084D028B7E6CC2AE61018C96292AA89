@@ -1,0 +1,271 @@
+﻿/**
+ * Script pour injecter des utilisateurs de test via l'API
+ * Usage: node seed-users.js
+ */
+
+const API_URL = 'http://localhost:3001/api/v1';
+
+const testUsers = [
+  {
+    email: 'admin@autorescue.cm',
+    password: 'Admin123!',
+    firstName: 'Admin',
+    lastName: 'System',
+    phone: '+237600000000',
+    role: 'motorist' // Will be updated to admin in DB
+  },
+  {
+    email: 'motorist@test.cm',
+    password: 'Test123!',
+    firstName: 'Jean',
+    lastName: 'Dupont',
+    phone: '+237611111111',
+    role: 'motorist'
+  },
+  {
+    email: 'motorist2@test.cm',
+    password: 'Test123!',
+    firstName: 'Marie',
+    lastName: 'Kamga',
+    phone: '+237622222222',
+    role: 'motorist'
+  },
+  {
+    email: 'garage@test.cm',
+    password: 'Test123!',
+    firstName: 'Paul',
+    lastName: 'Garage Owner',
+    phone: '+237633333333',
+    role: 'garage'
+  },
+  {
+    email: 'garage2@test.cm',
+    password: 'Test123!',
+    firstName: 'Pierre',
+    lastName: 'Station Chef',
+    phone: '+237644444444',
+    role: 'garage'
+  },
+  {
+    email: 'mechanic@test.cm',
+    password: 'Test123!',
+    firstName: 'Michel',
+    lastName: 'Mecanicien',
+    phone: '+237655555555',
+    role: 'mechanic'
+  },
+  {
+    email: 'mechanic2@test.cm',
+    password: 'Test123!',
+    firstName: 'Marc',
+    lastName: 'Technicien',
+    phone: '+237666666666',
+    role: 'mechanic'
+  }
+];
+
+async function registerUser(user) {
+  try {
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(user),
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      console.log(`✅ ${user.email} - Cree avec succes (${user.role})`);
+      return { success: true, user: data.user, token: data.accessToken };
+    } else {
+      console.log(`⚠️ ${user.email} - ${data.message || 'Erreur'}`);
+      return { success: false, error: data.message };
+    }
+  } catch (error) {
+    console.log(`❌ ${user.email} - Erreur de connexion: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+async function createGarage(token, garageData) {
+  try {
+    const response = await fetch(`${API_URL}/garages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(garageData),
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      console.log(`  🔧 Garage "${garageData.name}" cree`);
+      return data;
+    } else {
+      console.log(`  ⚠️ Garage: ${data.message || JSON.stringify(data)}`);
+      return null;
+    }
+  } catch (error) {
+    console.log(`  ❌ Garage: ${error.message}`);
+    return null;
+  }
+}
+
+async function createVehicle(token, vehicleData) {
+  try {
+    const response = await fetch(`${API_URL}/vehicles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(vehicleData),
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      console.log(`  🚗 Vehicule "${vehicleData.brand} ${vehicleData.model}" cree`);
+      return data;
+    } else {
+      console.log(`  ⚠️ Vehicule: ${data.message || JSON.stringify(data)}`);
+      return null;
+    }
+  } catch (error) {
+    console.log(`  ❌ Vehicule: ${error.message}`);
+    return null;
+  }
+}
+
+async function main() {
+  console.log('🚀 Injection des utilisateurs de test...\n');
+  console.log('API URL:', API_URL);
+  console.log('');
+
+  // Verifier que l'API est accessible
+  try {
+    await fetch(`${API_URL}`);
+  } catch (error) {
+    console.log('❌ API non accessible. Assurez-vous que le backend est demarre.');
+    console.log('   Executez: cd backend && npm run start:dev');
+    process.exit(1);
+  }
+
+  const results = {
+    motorists: [],
+    garages: [],
+    mechanics: []
+  };
+
+  // Creer tous les utilisateurs
+  for (const user of testUsers) {
+    const result = await registerUser(user);
+    
+    if (result.success) {
+      if (user.role === 'motorist') {
+        results.motorists.push({ ...result, email: user.email });
+      } else if (user.role === 'garage') {
+        results.garages.push({ ...result, email: user.email });
+      } else if (user.role === 'mechanic') {
+        results.mechanics.push({ ...result, email: user.email });
+      }
+    }
+    
+    // Petite pause entre les requetes
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  console.log('\n📦 Creation des donnees associees...\n');
+
+  // Creer des vehicules pour les automobilistes (snake_case pour la DB)
+  for (const motorist of results.motorists) {
+    if (motorist.token) {
+      await createVehicle(motorist.token, {
+        brand: 'Toyota',
+        model: 'Corolla',
+        year: 2020,
+        license_plate: 'LT-' + Math.random().toString(36).substring(2, 6).toUpperCase(),
+        color: 'Blanc',
+        vehicle_type: 'car',
+        is_default: true
+      });
+      
+      await createVehicle(motorist.token, {
+        brand: 'Honda',
+        model: 'CR-V',
+        year: 2019,
+        license_plate: 'LT-' + Math.random().toString(36).substring(2, 6).toUpperCase(),
+        color: 'Noir',
+        vehicle_type: 'car',
+        is_default: false
+      });
+    }
+  }
+
+  // Creer des garages pour les proprietaires de garage (snake_case pour la DB)
+  const garageData = [
+    {
+      name: 'Garage Central Douala',
+      description: 'Garage multi-marques avec expertise en mecanique generale et electronique automobile',
+      address: 'Rue de la Joie, Akwa, Douala',
+      latitude: 4.0511,
+      longitude: 9.7679,
+      phone: '+237699001122',
+      email: 'contact@garagecentral.cm',
+      services: ['Mecanique generale', 'Electricite auto', 'Climatisation', 'Diagnostic electronique'],
+      specialties: ['Toyota', 'Honda', 'Nissan'],
+      diagnostic_fee: 5000,
+      travel_fee_per_km: 500
+    },
+    {
+      name: 'Station Service Bonapriso',
+      description: 'Station service complete avec garage et depannage 24h/24',
+      address: 'Boulevard de la Liberte, Bonapriso, Douala',
+      latitude: 4.0232,
+      longitude: 9.6949,
+      phone: '+237699003344',
+      email: 'contact@stationbonapriso.cm',
+      services: ['Carburant', 'Vidange', 'Pneus', 'Depannage'],
+      specialties: ['Toutes marques'],
+      diagnostic_fee: 3000,
+      travel_fee_per_km: 400
+    }
+  ];
+
+  let garageIndex = 0;
+  for (const garageOwner of results.garages) {
+    if (garageOwner.token && garageData[garageIndex]) {
+      await createGarage(garageOwner.token, garageData[garageIndex]);
+      garageIndex++;
+    }
+  }
+
+  console.log('\n✅ Seed termine!\n');
+  console.log('📋 Comptes de test crees:');
+  console.log('');
+  console.log('👤 ADMIN (a configurer manuellement):');
+  console.log('   Email: admin@autorescue.cm');
+  console.log('   Password: Admin123!');
+  console.log('   SQL: UPDATE profiles SET role = \'admin\' WHERE email = \'admin@autorescue.cm\';');
+  console.log('');
+  console.log('🚗 AUTOMOBILISTES:');
+  console.log('   Email: motorist@test.cm');
+  console.log('   Email: motorist2@test.cm');
+  console.log('   Password: Test123!');
+  console.log('');
+  console.log('🔧 GARAGES:');
+  console.log('   Email: garage@test.cm');
+  console.log('   Email: garage2@test.cm');
+  console.log('   Password: Test123!');
+  console.log('');
+  console.log('👷 MECANICIENS:');
+  console.log('   Email: mechanic@test.cm');
+  console.log('   Email: mechanic2@test.cm');
+  console.log('   Password: Test123!');
+}
+
+main().catch(console.error);

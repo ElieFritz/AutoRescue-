@@ -1,0 +1,43 @@
+﻿import { Controller, Get, Patch, Body, Param, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { MechanicsService } from './mechanics.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../../common/enums';
+
+@ApiTags('Mechanics')
+@ApiBearerAuth('access-token')
+@Controller('mechanics')
+export class MechanicsController {
+  constructor(private readonly mechanicsService: MechanicsService) {}
+
+  @Get('garage/:garageId')
+  @ApiOperation({ summary: 'Lister les mécaniciens d\'un garage' })
+  async findByGarage(@Param('garageId') garageId: string) {
+    return this.mechanicsService.findByGarage(garageId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtenir un mécanicien' })
+  async findOne(@Param('id') id: string) {
+    return this.mechanicsService.findOne(id);
+  }
+
+  @Patch('location')
+  @Roles(UserRole.MECHANIC)
+  @ApiOperation({ summary: 'Mettre à jour ma position' })
+  async updateLocation(
+    @CurrentUser() user: any,
+    @Body('latitude') lat: number,
+    @Body('longitude') lng: number,
+  ) {
+    return this.mechanicsService.updateLocation(user.id, lat, lng);
+  }
+
+  @Patch('status')
+  @Roles(UserRole.MECHANIC)
+  @ApiOperation({ summary: 'Mettre à jour mon statut' })
+  async updateStatus(@CurrentUser() user: any, @Body('status') status: string) {
+    return this.mechanicsService.updateStatus(user.id, status);
+  }
+}

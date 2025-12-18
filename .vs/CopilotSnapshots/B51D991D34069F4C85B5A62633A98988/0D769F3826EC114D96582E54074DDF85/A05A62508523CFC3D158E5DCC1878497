@@ -1,0 +1,324 @@
+﻿'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { 
+  Users, 
+  Building2, 
+  Wrench, 
+  Car, 
+  TrendingUp,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Activity
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatCurrency } from '@/lib/utils';
+
+// API calls
+const fetchStats = async (token: string) => {
+  const headers = { Authorization: `Bearer ${token}` };
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+  
+  try {
+    const [usersRes, garagesRes, breakdownsRes] = await Promise.all([
+      fetch(`${baseUrl}/auth/users`, { headers }).then(r => r.ok ? r.json() : []),
+      fetch(`${baseUrl}/garages`, { headers }).then(r => r.ok ? r.json() : []),
+      fetch(`${baseUrl}/breakdowns`, { headers }).then(r => r.ok ? r.json() : []),
+    ]);
+    
+    return {
+      users: Array.isArray(usersRes) ? usersRes : [],
+      garages: Array.isArray(garagesRes) ? garagesRes : [],
+      breakdowns: Array.isArray(breakdownsRes) ? breakdownsRes : [],
+    };
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    return { users: [], garages: [], breakdowns: [] };
+  }
+};
+
+export default function AdminDashboardPage() {
+  const [data, setData] = useState<{ users: any[]; garages: any[]; breakdowns: any[] }>({
+    users: [],
+    garages: [],
+    breakdowns: [],
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const token = localStorage.getItem('access_token') || '';
+      const result = await fetchStats(token);
+      setData(result);
+      setIsLoading(false);
+    };
+
+    loadData();
+  }, []);
+
+  const stats = {
+    totalUsers: data.users.length,
+    totalGarages: data.garages.length,
+    totalMechanics: data.garages.reduce((acc, g) => acc + (g.mechanics_count || 0), 0),
+    totalBreakdowns: data.breakdowns.length,
+    pendingBreakdowns: data.breakdowns.filter((b: any) => b.status === 'pending').length,
+    completedBreakdowns: data.breakdowns.filter((b: any) => b.status === 'completed').length,
+    totalRevenue: data.breakdowns
+      .filter((b: any) => b.status === 'completed')
+      .reduce((acc: number, b: any) => acc + (b.total_amount || 0), 0),
+  };
+
+  const recentActivity = data.breakdowns.slice(0, 5).map((b: any, i: number) => ({
+    id: b.id,
+    type: 'breakdown',
+    message: `${b.title || 'Intervention'} - ${b.status}`,
+    time: new Date(b.created_at).toLocaleDateString('fr-FR'),
+  }));
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Dashboard Admin</h1>
+        <p className="text-muted-foreground">Vue d'ensemble de la plateforme Authelp</p>
+      </div>
+
+      {/* Main stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Utilisateurs</p>
+                  <p className="text-2xl font-bold">{stats.totalUsers}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <Users className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Garages</p>
+                  <p className="text-2xl font-bold">{stats.totalGarages}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Interventions</p>
+                  <p className="text-2xl font-bold">{stats.totalBreakdowns}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
+                  <Car className="h-6 w-6 text-yellow-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Revenus</p>
+                  <p className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                  <DollarSign className="h-6 w-6 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Breakdowns stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.pendingBreakdowns}</p>
+                  <p className="text-xs text-muted-foreground">En attente</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.completedBreakdowns}</p>
+                  <p className="text-xs text-muted-foreground">Terminees</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <Wrench className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.totalMechanics}</p>
+                  <p className="text-xs text-muted-foreground">Mecaniciens</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent activity */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Activite recente
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentActivity.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">Aucune activite recente</p>
+              ) : (
+                <div className="space-y-4">
+                  {recentActivity.map((activity: any) => (
+                    <div key={activity.id} className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-orange-500" />
+                      <div className="flex-1">
+                        <p className="text-sm">{activity.message}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{activity.time}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Quick actions */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Actions rapides</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/admin/users">
+                <Button variant="outline" className="w-full justify-start">
+                  <Users className="h-4 w-4 mr-2" />
+                  Gerer les utilisateurs
+                </Button>
+              </Link>
+              <Link href="/admin/garages">
+                <Button variant="outline" className="w-full justify-start">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Gerer les garages
+                </Button>
+              </Link>
+              <Link href="/admin/breakdowns">
+                <Button variant="outline" className="w-full justify-start">
+                  <Car className="h-4 w-4 mr-2" />
+                  Voir les interventions
+                </Button>
+              </Link>
+              <Link href="/admin/reports">
+                <Button variant="outline" className="w-full justify-start">
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Rapports et statistiques
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    </div>
+  );
+}

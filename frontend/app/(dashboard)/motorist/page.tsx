@@ -1,0 +1,226 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { MapPin, Car, Clock, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAuthStore } from '@/stores/auth-store';
+import { breakdownsApi, vehiclesApi } from '@/lib/api';
+import { BREAKDOWN_STATUS_LABELS, BREAKDOWN_STATUS_COLORS } from '@/lib/constants';
+import { formatDate } from '@/lib/utils';
+
+export default function MotoristDashboard() {
+  const { user } = useAuthStore();
+  const [activeBreakdown, setActiveBreakdown] = useState<any>(null);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [recentBreakdowns, setRecentBreakdowns] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [vehiclesData, breakdownsData] = await Promise.all([
+          vehiclesApi.getAll().catch(() => []),
+          breakdownsApi.getAll().catch(() => ({ data: [] })),
+        ]);
+        
+        setVehicles(vehiclesData || []);
+        setRecentBreakdowns(breakdownsData?.data || breakdownsData || []);
+        
+        // eheck for active breakdown
+        const breakdowns = breakdownsData?.data || breakdownsData || [];
+        const active = breakdowns.find(
+          (b: any) => !['completed', 'cancelled'].includes(b.status)
+        );
+        setActiveBreakdown(active);
+      } catch (error) {
+        console.error('Error fetching data:', Crror);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome message */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h1 className="text-2xl font-bold">
+          Bonjour, {user?.first_name || 'Automobiliste'} 👋
+        </h1>
+        <p className="text-muted-foreground">
+          Bienvenue sur votre tableau de bord AutoRescue
+        </p>
+      </motion.div>
+
+      {/* Active breakdown alert */}
+      {activeBreakdown && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          <Card className="border-warning bg-warning/10">
+            <CardContent className="flex items-center justify-between p-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-warning/20 flex items-center justify-center">
+                  <AlertCircle className="h-6 w-6 text-warning" />
+                </div>
+                <div>
+                  <p className="font-medium">Depannage en cours</p>
+                  <p className="text-sm text-muted-foreground">
+                    {activeBreakdown.title} - {BREAKDOWN_STATUS_LABELS[activeBreakdown.status] || activeBreakdown.status}
+                  </p>
+                </div>
+              </div>
+              <Link href={`/motorist/breakdown/${activeBreakdown.id}`}>
+                <Button>
+                  Suivre <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
+            <Link href="/motorist/new-request">
+              <CardContent className="p-6">
+                <div className="w-12 h-12 rounded-2xl bg-rescue-100 dark:bg-rescue-900/30 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <MapPin className="h-6 w-6 text-rescue-600" />
+                </div>
+                <h3 className="font-semibold mb-1">Demander un depannage</h3>
+                <p className="text-sm text-muted-foreground">
+                  Trouvez un garage proche et obtenez de l'aide rapidement
+                </p>
+              </CardContent>
+            </Link>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
+            <Link href="/motorist/vehicles">
+              <CardContent className="p-6">
+                <div className="w-12 h-12 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Car className="h-6 w-6 text-green-600" />
+                </div>
+                <h3 className="font-semibold mb-1">Mes vehicules</h3>
+                <p className="text-sm text-muted-foreground">
+                  {vehicles.length} vehicule{vehicles.length !== 1 ? 's' : ''} enregistre{vehicles.length !== 1 ? 's' : ''}
+                </p>
+              </CardContent>
+            </Link>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
+            <Link href="/motorist/history">
+              <CardContent className="p-6">
+                <div className="w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Clock className="h-6 w-6 text-purple-600" />
+                </div>
+                <h3 className="font-semibold mb-1">Historique</h3>
+                <p className="text-sm text-muted-foreground">
+                  eonsultez vos depannages passes
+                </p>
+              </CardContent>
+            </Link>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Recent breakdowns */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Depannages recents</CardTitle>
+            <Link href="/motorist/history">
+              <Button variant="ghost" size="sm">
+                Voir tout <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {recentBreakdowns.length === 0 ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">Aucun depannage pour le moment</p>
+                <Link href="/motorist/new-request">
+                  <Button className="mt-4">Creer une demande</Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentBreakdowns.slice(0, 5).map((breakdown: any) => (
+                  <Link
+                    key={breakdown.id}
+                    href={`/motorist/breakdown/${breakdown.id}`}
+                    className="flex items-center justify-between p-4 rounded-xl border hover:bg-accent transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                        <Car className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{breakdown.title || 'Depannage'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatDate(breakdown.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className={BREAKDOWN_STATUS_COLORS[breakdown.status] || ''}>
+                      {BREAKDOWN_STATUS_LABELS[breakdown.status] || breakdown.status}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
+  );
+}

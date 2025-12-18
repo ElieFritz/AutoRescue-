@@ -1,0 +1,148 @@
+﻿import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
+import { SupabaseService } from '../../database/supabase.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async register(dto: RegisterDto) {
+    const { email, password, firstName, lastName, phone, role } = dto;
+
+    // Create user in Supabase Auth
+    const { data: authData, error: authError } = await this.supabase.client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          first_name: firstName,
+          last_name: lastName,
+          role: role || 'motorist',
+        },
+      },
+    });
+
+    if (authError) {
+      if (authError.message.includes('already registered')) {
+        throw new ConflictException('Cet email est d�j� utilis�');
+      }
+      throw new BadRequestException(authError.message);
+    }
+
+    if (!authData.user) {
+      throw new BadRequestException('Erreur lors de la cr�ation du compte');
+    }
+
+    // Update profile with phone if provided
+    if (phone) {
+      await this.supabase.client
+        .from('profiles')
+        .update({ phone })
+        .eq('id', authData.user.id);
+    }
+
+    // Get the profile
+    const { data: profile } = await this.supabase.client
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single();
+
+    // Generate tokens
+    const tokens = this.generateTokens(authData.user.id, email, profile?.role || 'motorist');
+
+    return {
+      user: profile,
+      ...tokens,
+    };
+  }
+
+  async login(dto: LoginDto) {
+    const { email, password } = dto;
+
+    const { data: authData, error: authError } = await this.supabase.client.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError || !authData.user) {
+      throw new UnauthorizedException('Email ou mot de passe incorrect');
+    }
+
+    // Get profile
+    const { data: profile } = await this.supabase.client
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single();
+
+    if (!profile) {
+      throw new UnauthorizedException('Profil non trouv�');
+    }
+
+    if (!profile.is_active) {
+      throw new UnauthorizedException('Compte d�sactiv�');
+    }
+
+    const tokens = this.generateTokens(authData.user.id, email, profile.role);
+
+    return {
+      user: profile,
+      ...tokens,
+    };
+  }
+
+  async refreshToken(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+
+      const { data: profile } = await this.supabase.client
+        .from('profiles')
+        .select('*')
+        .eq('id', payload.sub)
+        .single();
+
+      if (!profile) {
+        throw new UnauthorizedException('Utilisateur non trouv�');
+      }
+
+      return this.generateTokens(payload.sub, profile.email, profile.role);
+    } catch (error) {
+      throw new UnauthorizedException('Token de rafra�chissement invalide');
+    }
+  }
+
+  private generateTokens(userId: string, email: string, role: string) {
+    const payload = { sub: userId, email, role };
+
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION', '15m'),
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  async validateUser(userId: string) {
+    const { data: profile } = await this.supabase.client
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    return profile;
+  }
+}

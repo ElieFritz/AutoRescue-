@@ -1,0 +1,527 @@
+﻿'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MapPin, Car, Camera, Send, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
+import { useBreakdownStore } from '@/stores/breakdown-store';
+import { vehiclesApi, garagesApi, breakdownsApi } from '@/lib/api';
+import { BREAKDOWN_TYPES } from '@/lib/constants';
+import { formatCurrency, formatDistance } from '@/lib/utils';
+import dynamic from 'next/dynamic';
+
+// Dynamic import for map to avoid SSR issues
+const MapContainer = dynamic(() => import('@/components/map/map-container').then(mod => mod.MapContainer), {
+  ssr: false,
+  loading: () => <div className="h-64 bg-muted rounded-xl animate-pulse" />,
+});
+
+interface MarkerData {
+  position: [number, number];
+  type: 'user' | 'garage' | 'mechanic';
+  data?: any;
+}
+
+const steps = [
+  { id: 0, title: 'Localisation', icon: MapPin },
+  { id: 1, title: 'Véhicule', icon: Car },
+  { id: 2, title: 'Description', icon: Camera },
+  { id: 3, title: 'Confirmation', icon: Send },
+];
+
+export default function NewRequestPage() {
+  const router = useRouter();
+  const { formData, setFormData, currentStep, setCurrentStep, selectedGarage, setSelectedGarage, resetForm } = useBreakdownStore();
+  
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [nearbyGarages, setNearbyGarages] = useState<any[]>([]);
+  const [isLoadingGarages, setIsLoadingGarages] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch vehicles
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        const data = await vehiclesApi.getAll();
+        setVehicles(data || []);
+        // Set default vehicle
+        const defaultVehicle = data?.find((v: any) => v.is_default);
+        if (defaultVehicle) {
+          setFormData({ vehicleId: defaultVehicle.id });
+        }
+      } catch (error) {
+        console.error('Error fetching vehicles:', error);
+      }
+    };
+    fetchVehicles();
+  }, [setFormData]);
+
+  // Fetch nearby garages when location is set
+  useEffect(() => {
+    const fetchGarages = async () => {
+      if (!formData.location) return;
+      
+      setIsLoadingGarages(true);
+      try {
+        const garages = await garagesApi.getNearby(
+          formData.location.lat,
+          formData.location.lng,
+          15
+        );
+        setNearbyGarages(garages || []);
+      } catch (error) {
+        console.error('Error fetching garages:', error);
+        toast.error('Erreur lors de la recherche de garages');
+      } finally {
+        setIsLoadingGarages(false);
+      }
+    };
+    
+    fetchGarages();
+  }, [formData.location]);
+
+  const handleGetLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setFormData({
+            location: {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            },
+          });
+          toast.success('Position obtenue');
+        },
+        (error) => {
+          toast.error('Impossible d\'obtenir votre position');
+          console.error(error);
+        }
+      );
+    } else {
+      toast.error('La géolocalisation n\'est pas supportée');
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.location || !formData.title) {
+      toast.error('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const breakdown = await breakdownsApi.create({
+        title: formData.title,
+        description: formData.description,
+        breakdownType: formData.breakdownType,
+        latitude: formData.location.lat,
+        longitude: formData.location.lng,
+        address: formData.location.address,
+        vehicleId: formData.vehicleId,
+        garageId: formData.garageId,
+        photos: formData.photos,
+      });
+
+      toast.success('Demande envoyée avec succès');
+      resetForm();
+      router.push(`/motorist/breakdown/${breakdown.id}`);
+    } catch (error: any) {
+      toast.error(error.message || 'Erreur lors de l\'envoi de la demande');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const canProceed = () => {
+    switch (currentStep) {
+      case 0:
+        return formData.location !== null;
+      case 1:
+        return true; // Vehicle is optional
+      case 2:
+        return formData.title?.trim().length > 0;
+      default:
+        return true;
+    }
+  };
+
+  // Build markers array with proper typing
+  const buildMarkers = (): MarkerData[] => {
+    const markers: MarkerData[] = [];
+    
+    if (formData.location) {
+      markers.push({
+        position: [formData.location.lat, formData.location.lng],
+        type: 'user',
+      });
+    }
+    
+    nearbyGarages.forEach((g: any) => {
+      if (g.latitude && g.longitude) {
+        markers.push({
+          position: [g.latitude, g.longitude] as [number, number],
+          type: 'garage',
+          data: g,
+        });
+      }
+    });
+    
+    return markers;
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Progress */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          {steps.map((step, index) => (
+            <div
+              key={step.id}
+              className={`flex items-center ${index < steps.length - 1 ? 'flex-1' : ''}`}
+            >
+              <div
+                className={`
+                  w-10 h-10 rounded-full flex items-center justify-center transition-colors
+                  ${currentStep >= step.id
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
+                  }
+                `}
+              >
+                <step.icon className="h-5 w-5" />
+              </div>
+              {index < steps.length - 1 && (
+                <div
+                  className={`
+                    flex-1 h-1 mx-2 rounded transition-colors
+                    ${currentStep > step.id ? 'bg-primary' : 'bg-muted'}
+                  `}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="text-center font-medium">
+          Étape {currentStep + 1}: {steps[currentStep].title}
+        </p>
+      </div>
+
+      {/* Step content */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentStep}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.2 }}
+        >
+          {/* Step 0: Location */}
+          {currentStep === 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Où êtes-vous ?</CardTitle>
+                <CardDescription>
+                  Nous avons besoin de votre position pour trouver les garages à proximité
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button onClick={handleGetLocation} className="w-full" size="lg">
+                  <MapPin className="mr-2 h-5 w-5" />
+                  Utiliser ma position actuelle
+                </Button>
+                
+                {formData.location && (
+                  <div className="space-y-4">
+                    <div className="h-64 rounded-xl overflow-hidden border">
+                      <MapContainer
+                        center={[formData.location.lat, formData.location.lng]}
+                        markers={buildMarkers()}
+                        onGarageSelect={(garage) => {
+                          setSelectedGarage(garage);
+                          setFormData({ garageId: garage.garage_id });
+                        }}
+                      />
+                    </div>
+
+                    {/* Nearby garages list */}
+                    {isLoadingGarages ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : nearbyGarages.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label>Garages à proximité</Label>
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {nearbyGarages.map((garage: any) => (
+                            <button
+                              key={garage.garage_id}
+                              onClick={() => {
+                                setSelectedGarage(garage);
+                                setFormData({ garageId: garage.garage_id });
+                              }}
+                              className={`
+                                w-full p-3 rounded-xl border text-left transition-colors
+                                ${selectedGarage?.garage_id === garage.garage_id
+                                  ? 'border-primary bg-primary/5'
+                                  : 'hover:bg-accent'
+                                }
+                              `}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <p className="font-medium">{garage.garage_name}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {formatDistance(garage.distance_km)}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-medium text-primary">
+                                    {formatCurrency(garage.diagnostic_fee + garage.travel_fee)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Frais initiaux
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-center text-muted-foreground py-4">
+                        Aucun garage trouvé à proximité
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 1: Vehicle */}
+          {currentStep === 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Quel véhicule ?</CardTitle>
+                <CardDescription>
+                  Sélectionnez le véhicule concerné (optionnel)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {vehicles.length > 0 ? (
+                  <div className="space-y-2">
+                    {vehicles.map((vehicle: any) => (
+                      <button
+                        key={vehicle.id}
+                        onClick={() => setFormData({ vehicleId: vehicle.id })}
+                        className={`
+                          w-full p-4 rounded-xl border text-left transition-colors flex items-center gap-4
+                          ${formData.vehicleId === vehicle.id
+                            ? 'border-primary bg-primary/5'
+                            : 'hover:bg-accent'
+                          }
+                        `}
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
+                          <Car className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <p className="font-medium">
+                            {vehicle.brand} {vehicle.model}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {vehicle.license_plate || 'Pas de plaque'}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Car className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground mb-4">
+                      Aucun véhicule enregistré
+                    </p>
+                    <Button variant="outline" asChild>
+                      <a href="/motorist/vehicles/new">Ajouter un véhicule</a>
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 2: Description */}
+          {currentStep === 2 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Décrivez votre panne</CardTitle>
+                <CardDescription>
+                  Plus vous donnez de détails, mieux le garagiste pourra vous aider
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="title">Titre de la panne *</Label>
+                  <Input
+                    id="title"
+                    placeholder="Ex: Batterie à plat"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ title: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="type">Type de panne</Label>
+                  <Select
+                    value={formData.breakdownType}
+                    onValueChange={(value) => setFormData({ breakdownType: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionnez un type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BREAKDOWN_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description détaillée</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Décrivez votre problème en détail..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ description: e.target.value })}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Photos (optionnel)</Label>
+                  <div className="border-2 border-dashed rounded-xl p-8 text-center">
+                    <Camera className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Ajoutez des photos pour aider le diagnostic
+                    </p>
+                    <Button variant="outline" className="mt-2">
+                      Ajouter des photos
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 3: Confirmation */}
+          {currentStep === 3 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Récapitulatif</CardTitle>
+                <CardDescription>
+                  Vérifiez les informations avant d'envoyer
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex justify-between py-2 border-b">
+                    <span className="text-muted-foreground">Panne</span>
+                    <span className="font-medium">{formData.title}</span>
+                  </div>
+                  
+                  {formData.breakdownType && (
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Type</span>
+                      <span className="font-medium">
+                        {BREAKDOWN_TYPES.find(t => t.value === formData.breakdownType)?.label}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {selectedGarage && (
+                    <>
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Garage</span>
+                        <span className="font-medium">{selectedGarage.garage_name}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Distance</span>
+                        <span className="font-medium">{formatDistance(selectedGarage.distance_km)}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Frais de diagnostic</span>
+                        <span className="font-medium">{formatCurrency(selectedGarage.diagnostic_fee)}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Frais de déplacement</span>
+                        <span className="font-medium">{formatCurrency(selectedGarage.travel_fee)}</span>
+                      </div>
+                      <div className="flex justify-between py-3 bg-primary/5 rounded-xl px-4 -mx-4">
+                        <span className="font-medium">Total à payer</span>
+                        <span className="font-bold text-primary text-lg">
+                          {formatCurrency(selectedGarage.diagnostic_fee + selectedGarage.travel_fee)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Navigation buttons */}
+      <div className="flex justify-between">
+        <Button
+          variant="outline"
+          onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
+          disabled={currentStep === 0}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Précédent
+        </Button>
+        
+        {currentStep < steps.length - 1 ? (
+          <Button
+            onClick={() => setCurrentStep(currentStep + 1)}
+            disabled={!canProceed()}
+          >
+            Suivant
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="gradient-primary"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Envoi...
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                Envoyer la demande
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

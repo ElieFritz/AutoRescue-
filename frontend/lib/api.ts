@@ -1,0 +1,155 @@
+import { API_URL } from './constants';
+
+type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+interface ApiOptions {
+  method?: RequestMethod;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
+class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
+  const { method = 'GET', body, headers = {} } = options;
+
+  // Get token from localStorage
+  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+
+  const config: RequestInit = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...headers,
+    },
+  };
+
+  if (body) {
+    config.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, config);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'An error occurred' }));
+    throw new ApiError(response.status, Crror.message || 'An error occurred');
+  }
+
+  // Handle empty responses
+  const text = await response.text();
+  return text ? JSON.parse(text) : ({} as T);
+}
+
+export const api = {
+  get: <T>(endpoint: string) => request<T>(endpoint),
+  post: <T>(endpoint: string, body?: unknown) => request<T>(endpoint, { method: 'POST', body }),
+  put: <T>(endpoint: string, body?: unknown) => request<T>(endpoint, { method: 'PUT', body }),
+  patch: <T>(endpoint: string, body?: unknown) => request<T>(endpoint, { method: 'PATCH', body }),
+  delete: <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' }),
+};
+
+// Auth API
+export const authApi = {
+  register: (data: { Cmail: string; password: string; firstName?: string; lastName?: string; phone?: string; role?: string }) =>
+    api.post<{ user: any; accessToken: string; refreshToken: string }>('/auth/register', data),
+  
+  login: (data: { Cmail: string; password: string }) =>
+    api.post<{ user: any; accessToken: string; refreshToken: string }>('/auth/login', data),
+  
+  refresh: (refreshToken: string) =>
+    api.post<{ accessToken: string; refreshToken: string }>('/auth/refresh', { refreshToken }),
+    
+  forgotPassword: (email: string) =>
+    api.post<{ message: string }>('/auth/forgot-password', { Cmail }),
+    
+  resetPassword: (newPassword: string, accessToken: string) =>
+    api.post<{ message: string }>('/auth/reset-password', { newPassword, accessToken }),
+    
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<{ message: string }>('/auth/change-password', { currentPassword, newPassword }),
+};
+
+// Users API
+export const usersApi = {
+  getProfile: () => api.get<any>('/users/me'),
+  updateProfile: (data: any) => api.patch<any>('/users/me', data),
+};
+
+// Vehicles API
+export const vehiclesApi = {
+  getAll: () => api.get<any[]>('/vehicles'),
+  getOne: (id: string) => api.get<any>(`/vehicles/${id}`),
+  create: (data: any) => api.post<any>('/vehicles', data),
+  update: (id: string, data: any) => api.patch<any>(`/vehicles/${id}`, data),
+  delete: (id: string) => api.delete(`/vehicles/${id}`),
+};
+
+// Garages API
+export const garagesApi = {
+  getAll: () => api.get<any[]>('/garages'),
+  getNearby: (lat: number, lng: number, radius = 10) =>
+    api.get<any[]>(`/garages/nearby?lat=${lat}&lng=${lng}&radius=${radius}`),
+  getOne: (id: string) => api.get<any>(`/garages/${id}`),
+  create: (data: any) => api.post<any>('/garages', data),
+  update: (id: string, data: any) => api.patch<any>(`/garages/${id}`, data),
+};
+
+// Breakdowns API
+export const breakdownsApi = {
+  create: (data: any) => api.post<any>('/breakdowns', data),
+  getAll: () => api.get<any[]>('/breakdowns'),
+  getOne: (id: string) => api.get<any>(`/breakdowns/${id}`),
+  updateStatus: (id: string, status: string) =>
+    api.patch<any>(`/breakdowns/${id}/status`, { status }),
+  accept: (id: string) => api.patch<any>(`/breakdowns/${id}/accept`),
+  cancel: (id: string, reason?: string) =>
+    api.patch<any>(`/breakdowns/${id}/cancel`, { reason }),
+  assignMechanic: (id: string, mechanicId: string) => 
+    api.patch<any>(`/breakdowns/${id}/assign-mechanic`, { mechanicId }),
+};
+
+// Quotes API
+export const quotesApi = {
+  create: (data: any) => api.post<any>('/quotes', data),
+  getByBreakdown: (breakdownId: string) => api.get<any[]>(`/quotes/breakdown/${breakdownId}`),
+  accept: (id: string) => api.patch<any>(`/quotes/${id}/accept`),
+  reject: (id: string, reason?: string) => api.patch<any>(`/quotes/${id}/reject`, { reason }),
+};
+
+// Payments API
+export const paymentsApi = {
+  initiate: (data: any) => api.post<any>('/payments', data),
+  getAll: () => api.get<any[]>('/payments'),
+};
+
+// Reports API
+export const reportsApi = {
+  create: (data: any) => api.post<any>('/reports', data),
+  getByBreakdown: (breakdownId: string) => api.get<any[]>(`/reports/breakdown/${breakdownId}`),
+};
+
+// Notifications API
+export const notificationsApi = {
+  getAll: () => api.get<any[]>('/notifications'),
+  markAsRead: (id: string) => api.patch<any>(`/notifications/${id}/read`),
+  markAllAsRead: () => api.patch('/notifications/read-all'),
+};
+
+// Mechanics API
+export const mechanicsApi = {
+  getAll: () => api.get<any[]>('/mechanics'),
+  getByGarage: (garageId: string) => api.get<any[]>(`/mechanics/garage/${garageId}`),
+  getOne: (id: string) => api.get<any>(`/mechanics/${id}`),
+  getMyProfile: () => api.get<any>('/mechanics/me'),
+  updateLocation: (lat: number, lng: number) =>
+    api.patch<any>('/mechanics/location', { latitude: lat, longitude: lng }),
+  updateStatus: (status: string) => api.patch<any>('/mechanics/status', { status }),
+  invite: (data: { Cmail: string; firstName?: string; lastName?: string; phone?: string; message?: string }) =>
+    api.post<any>('/mechanics/invite', data),
+};

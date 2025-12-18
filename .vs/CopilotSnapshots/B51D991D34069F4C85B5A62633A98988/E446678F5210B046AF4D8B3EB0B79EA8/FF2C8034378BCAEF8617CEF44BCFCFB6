@@ -1,0 +1,39 @@
+﻿import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { QuotesService } from './quotes.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+
+@ApiTags('Quotes')
+@ApiBearerAuth('access-token')
+@Controller('quotes')
+export class QuotesController {
+  constructor(private readonly quotesService: QuotesService) {}
+
+  @Get('breakdown/:breakdownId')
+  @ApiOperation({ summary: 'Obtenir les devis d\'une panne' })
+  async findByBreakdown(@Param('breakdownId') breakdownId: string) {
+    return this.quotesService.findByBreakdown(breakdownId);
+  }
+
+  @Post()
+  @Roles('mechanic')
+  @ApiOperation({ summary: 'Cr�er un devis' })
+  async create(@Body() createData: any, @CurrentUser() user: any) {
+    return this.quotesService.create(user.id, createData);
+  }
+
+  @Patch(':id/accept')
+  @Roles('motorist')
+  @ApiOperation({ summary: 'Accepter un devis' })
+  async accept(@Param('id') id: string) {
+    return this.quotesService.accept(id);
+  }
+
+  @Patch(':id/reject')
+  @Roles('motorist')
+  @ApiOperation({ summary: 'Refuser un devis' })
+  async reject(@Param('id') id: string, @Body('reason') reason: string) {
+    return this.quotesService.reject(id, reason);
+  }
+}

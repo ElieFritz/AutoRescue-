@@ -1,0 +1,52 @@
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
+import { SupabaseService } from '../../database/supabase.service';
+
+@Injectable()
+export class MechanicsService {
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async findByGarage(garageId: string) {
+    const { data, error } = await this.supabase.client
+      .from('mechanics')
+      .select('*, user:profiles(*)')
+      .eq('garage_id', garageId);
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async findOne(id: string) {
+    const { data, error } = await this.supabase.client
+      .from('mechanics')
+      .select('*, user:profiles(*), garage:garages(*)')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) throw new NotFoundException('M�canicien non trouv�');
+    return data;
+  }
+
+  async updateLocation(userId: string, lat: number, lng: number) {
+    const { data, error } = await this.supabase.client
+      .from('mechanics')
+      .update({ current_latitude: lat, current_longitude: lng })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async updateStatus(userId: string, status: string) {
+    const { data, error } = await this.supabase.client
+      .from('mechanics')
+      .update({ status })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+}

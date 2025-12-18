@@ -1,0 +1,48 @@
+﻿export enum UserRole {
+  MOTORIST = 'motorist',
+  GARAGE = 'garage',
+  MECHANIC = 'mechanic',
+  ADMIN = 'admin',
+}
+
+export enum BreakdownStatus {
+  PENDING = 'pending',
+  ACCEPTED = 'accepted',
+  MECHANIC_ASSIGNED = 'mechanic_assigned',
+  MECHANIC_ON_WAY = 'mechanic_on_way',
+  MECHANIC_ARRIVED = 'mechanic_arrived',
+  DIAGNOSING = 'diagnosing',
+  QUOTE_SENT = 'quote_sent',
+  QUOTE_ACCEPTED = 'quote_accepted',
+  REPAIRING = 'repairing',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+}
+
+export enum PaymentStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  REFUNDED = 'refunded',
+}
+
+export enum PaymentType {
+  DIAGNOSTIC = 'diagnostic',
+  REPAIR = 'repair',
+}
+
+export enum NotificationType {
+  BREAKDOWN_REQUEST = 'breakdown_request',
+  BREAKDOWN_ACCEPTED = 'breakdown_accepted',
+  MECHANIC_ASSIGNED = 'mechanic_assigned',
+  MECHANIC_ON_WAY = 'mechanic_on_way',
+  MECHANIC_ARRIVED = 'mechanic_arrived',
+  DIAGNOSTIC_COMPLETE = 'diagnostic_complete',
+  QUOTE_SENT = 'quote_sent',
+  QUOTE_ACCEPTED = 'quote_accepted',
+  REPAIR_STARTED = 'repair_started',
+  REPAIR_COMPLETE = 'repair_complete',
+  PAYMENT_RECEIVED = 'payment_received',
+  PAYMENT_FAILED = 'payment_failed',
+}

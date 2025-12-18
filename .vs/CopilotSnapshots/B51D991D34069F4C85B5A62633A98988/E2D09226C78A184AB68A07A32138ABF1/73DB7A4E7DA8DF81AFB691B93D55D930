@@ -1,0 +1,65 @@
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
+import { SupabaseService } from '../../database/supabase.service';
+
+@Injectable()
+export class GaragesService {
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async findAll() {
+    const { data, error } = await this.supabase.client
+      .from('garages')
+      .select('*, owner:profiles(*)')
+      .eq('is_active', true)
+      .order('rating', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async findNearby(lat: number, lng: number, radiusKm: number = 10) {
+    const { data, error } = await this.supabase.client
+      .rpc('find_nearby_garages', {
+        user_lat: lat,
+        user_lng: lng,
+        radius_km: radiusKm
+      });
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async findOne(id: string) {
+    const { data, error } = await this.supabase.client
+      .from('garages')
+      .select('*, owner:profiles(*), mechanics(*)')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) throw new NotFoundException('Garage non trouv�');
+    return data;
+  }
+
+  async create(ownerId: string, createData: any) {
+    const { data, error } = await this.supabase.client
+      .from('garages')
+      .insert({ ...createData, owner_id: ownerId })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async update(id: string, ownerId: string, updateData: any) {
+    const { data, error } = await this.supabase.client
+      .from('garages')
+      .update(updateData)
+      .eq('id', id)
+      .eq('owner_id', ownerId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+}

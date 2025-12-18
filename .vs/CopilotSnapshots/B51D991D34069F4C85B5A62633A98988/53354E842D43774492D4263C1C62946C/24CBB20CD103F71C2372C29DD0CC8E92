@@ -1,0 +1,67 @@
+﻿import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { SupabaseService } from '../../database/supabase.service';
+
+@Injectable()
+export class VehiclesService {
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async findAll(ownerId: string) {
+    const { data, error } = await this.supabase.client
+      .from('vehicles')
+      .select('*')
+      .eq('owner_id', ownerId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async findOne(id: string, ownerId: string) {
+    const { data, error } = await this.supabase.client
+      .from('vehicles')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) throw new NotFoundException('V�hicule non trouv�');
+    if (data.owner_id !== ownerId) throw new ForbiddenException();
+    return data;
+  }
+
+  async create(ownerId: string, createData: any) {
+    const { data, error } = await this.supabase.client
+      .from('vehicles')
+      .insert({ ...createData, owner_id: ownerId })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async update(id: string, ownerId: string, updateData: any) {
+    await this.findOne(id, ownerId);
+    
+    const { data, error } = await this.supabase.client
+      .from('vehicles')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async remove(id: string, ownerId: string) {
+    await this.findOne(id, ownerId);
+    
+    const { error } = await this.supabase.client
+      .from('vehicles')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw new Error(error.message);
+    return { success: true };
+  }
+}

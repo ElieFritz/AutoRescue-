@@ -1,0 +1,33 @@
+﻿# AutoRescue Backend Environment Variables
+
+# Application
+NODE_ENV=development
+PORT=3001
+API_PREFIX=api/v1
+
+# JWT Configuration
+JWT_ACCESS_SECRET=your-super-secret-access-key-change-in-production
+JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-in-production
+JWT_ACCESS_EXPIRATION=15m
+JWT_REFRESH_EXPIRATION=7d
+
+# Supabase Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# NotchPay Configuration
+NOTCHPAY_PUBLIC_KEY=your-notchpay-public-key
+NOTCHPAY_SECRET_KEY=your-notchpay-secret-key
+NOTCHPAY_WEBHOOK_SECRET=your-webhook-secret
+NOTCHPAY_CALLBACK_URL=http://localhost:3000/payments/callback
+
+# Mapbox Configuration (optional for backend geocoding)
+MAPBOX_ACCESS_TOKEN=your-mapbox-token
+
+# CORS
+CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+
+# Throttling
+THROTTLE_TTL=60
+THROTTLE_LIMIT=100

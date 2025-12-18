@@ -1,0 +1,340 @@
+﻿-- ============================================
+-- AUTORESCUE - ROW LEVEL SECURITY (RLS)
+-- Migration: 002_rls_policies
+-- ============================================
+
+-- Activer RLS sur toutes les tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vehicles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE garages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mechanics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE breakdowns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
+
+-- ============================================
+-- POLICIES: users
+-- ============================================
+
+-- Les utilisateurs peuvent voir leur propre profil
+CREATE POLICY "Users can view own profile"
+ON users FOR SELECT
+USING (auth.uid() = id);
+
+-- Les utilisateurs peuvent mettre à jour leur propre profil
+CREATE POLICY "Users can update own profile"
+ON users FOR UPDATE
+USING (auth.uid() = id)
+WITH CHECK (auth.uid() = id);
+
+-- Les admins peuvent tout voir
+CREATE POLICY "Admins can view all users"
+ON users FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM users 
+        WHERE id = auth.uid() AND role = 'admin'
+    )
+);
+
+-- Les garages peuvent voir les profils des motoristes liés à leurs interventions
+CREATE POLICY "Garages can view motorists from their breakdowns"
+ON users FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM breakdowns b
+        JOIN garages g ON b.garage_id = g.id
+        WHERE b.motorist_id = users.id
+        AND g.user_id = auth.uid()
+    )
+);
+
+-- ============================================
+-- POLICIES: vehicles
+-- ============================================
+
+-- Les propriétaires peuvent voir leurs véhicules
+CREATE POLICY "Owners can view own vehicles"
+ON vehicles FOR SELECT
+USING (user_id = auth.uid());
+
+-- Les propriétaires peuvent créer des véhicules
+CREATE POLICY "Owners can create vehicles"
+ON vehicles FOR INSERT
+WITH CHECK (user_id = auth.uid());
+
+-- Les propriétaires peuvent mettre à jour leurs véhicules
+CREATE POLICY "Owners can update own vehicles"
+ON vehicles FOR UPDATE
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());
+
+-- Les propriétaires peuvent supprimer leurs véhicules
+CREATE POLICY "Owners can delete own vehicles"
+ON vehicles FOR DELETE
+USING (user_id = auth.uid());
+
+-- ============================================
+-- POLICIES: garages
+-- ============================================
+
+-- Tout le monde peut voir les garages actifs et vérifiés
+CREATE POLICY "Anyone can view active verified garages"
+ON garages FOR SELECT
+USING (is_active = true AND is_verified = true);
+
+-- Les propriétaires peuvent voir leurs propres garages
+CREATE POLICY "Owners can view own garages"
+ON garages FOR SELECT
+USING (user_id = auth.uid());
+
+-- Les propriétaires peuvent mettre à jour leurs garages
+CREATE POLICY "Owners can update own garages"
+ON garages FOR UPDATE
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());
+
+-- Les utilisateurs avec le rôle garage peuvent créer des garages
+CREATE POLICY "Garage role can create garages"
+ON garages FOR INSERT
+WITH CHECK (
+    user_id = auth.uid() AND
+    EXISTS (
+        SELECT 1 FROM users 
+        WHERE id = auth.uid() AND role = 'garage'
+    )
+);
+
+-- ============================================
+-- POLICIES: mechanics
+-- ============================================
+
+-- Les garages peuvent voir leurs mécaniciens
+CREATE POLICY "Garages can view own mechanics"
+ON mechanics FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM garages 
+        WHERE id = mechanics.garage_id AND user_id = auth.uid()
+    )
+);
+
+-- Les mécaniciens peuvent voir leur propre profil
+CREATE POLICY "Mechanics can view own profile"
+ON mechanics FOR SELECT
+USING (user_id = auth.uid());
+
+-- Les mécaniciens peuvent mettre à jour leur profil
+CREATE POLICY "Mechanics can update own profile"
+ON mechanics FOR UPDATE
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());
+
+-- Les garages peuvent créer des mécaniciens
+CREATE POLICY "Garages can create mechanics"
+ON mechanics FOR INSERT
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM garages 
+        WHERE id = garage_id AND user_id = auth.uid()
+    )
+);
+
+-- ============================================
+-- POLICIES: breakdowns
+-- ============================================
+
+-- Les motoristes peuvent voir leurs propres pannes
+CREATE POLICY "Motorists can view own breakdowns"
+ON breakdowns FOR SELECT
+USING (motorist_id = auth.uid());
+
+-- Les motoristes peuvent créer des pannes
+CREATE POLICY "Motorists can create breakdowns"
+ON breakdowns FOR INSERT
+WITH CHECK (
+    motorist_id = auth.uid() AND
+    EXISTS (
+        SELECT 1 FROM users 
+        WHERE id = auth.uid() AND role = 'motorist'
+    )
+);
+
+-- Les motoristes peuvent mettre à jour certains champs de leurs pannes
+CREATE POLICY "Motorists can update own breakdowns"
+ON breakdowns FOR UPDATE
+USING (motorist_id = auth.uid());
+
+-- Les garages peuvent voir les pannes qui leur sont assignées
+CREATE POLICY "Garages can view assigned breakdowns"
+ON breakdowns FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM garages 
+        WHERE id = breakdowns.garage_id AND user_id = auth.uid()
+    )
+);
+
+-- Les garages peuvent voir les nouvelles pannes à proximité (pending)
+CREATE POLICY "Garages can view nearby pending breakdowns"
+ON breakdowns FOR SELECT
+USING (
+    status = 'pending' AND
+    EXISTS (
+        SELECT 1 FROM garages g
+        WHERE g.user_id = auth.uid()
+        AND g.is_active = true
+        AND calculate_distance(breakdowns.latitude, breakdowns.longitude, g.latitude, g.longitude) <= g.max_travel_distance
+    )
+);
+
+-- Les garages peuvent mettre à jour les pannes qui leur sont assignées
+CREATE POLICY "Garages can update assigned breakdowns"
+ON breakdowns FOR UPDATE
+USING (
+    EXISTS (
+        SELECT 1 FROM garages 
+        WHERE id = breakdowns.garage_id AND user_id = auth.uid()
+    )
+);
+
+-- Les mécaniciens peuvent voir les pannes qui leur sont assignées
+CREATE POLICY "Mechanics can view assigned breakdowns"
+ON breakdowns FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM mechanics 
+        WHERE id = breakdowns.mechanic_id AND user_id = auth.uid()
+    )
+);
+
+-- Les mécaniciens peuvent mettre à jour les pannes qui leur sont assignées
+CREATE POLICY "Mechanics can update assigned breakdowns"
+ON breakdowns FOR UPDATE
+USING (
+    EXISTS (
+        SELECT 1 FROM mechanics 
+        WHERE id = breakdowns.mechanic_id AND user_id = auth.uid()
+    )
+);
+
+-- ============================================
+-- POLICIES: payments
+-- ============================================
+
+-- Les utilisateurs peuvent voir leurs propres paiements
+CREATE POLICY "Users can view own payments"
+ON payments FOR SELECT
+USING (user_id = auth.uid());
+
+-- Les utilisateurs peuvent créer des paiements pour eux-mêmes
+CREATE POLICY "Users can create own payments"
+ON payments FOR INSERT
+WITH CHECK (user_id = auth.uid());
+
+-- Les garages peuvent voir les paiements de leurs pannes
+CREATE POLICY "Garages can view breakdown payments"
+ON payments FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM breakdowns b
+        JOIN garages g ON b.garage_id = g.id
+        WHERE b.id = payments.breakdown_id AND g.user_id = auth.uid()
+    )
+);
+
+-- ============================================
+-- POLICIES: reports
+-- ============================================
+
+-- Les mécaniciens peuvent créer des rapports
+CREATE POLICY "Mechanics can create reports"
+ON reports FOR INSERT
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM mechanics 
+        WHERE id = reports.mechanic_id AND user_id = auth.uid()
+    )
+);
+
+-- Les mécaniciens peuvent voir et mettre à jour leurs rapports
+CREATE POLICY "Mechanics can view own reports"
+ON reports FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM mechanics 
+        WHERE id = reports.mechanic_id AND user_id = auth.uid()
+    )
+);
+
+CREATE POLICY "Mechanics can update own reports"
+ON reports FOR UPDATE
+USING (
+    EXISTS (
+        SELECT 1 FROM mechanics 
+        WHERE id = reports.mechanic_id AND user_id = auth.uid()
+    )
+);
+
+-- Les motoristes peuvent voir les rapports de leurs pannes
+CREATE POLICY "Motorists can view breakdown reports"
+ON reports FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM breakdowns 
+        WHERE id = reports.breakdown_id AND motorist_id = auth.uid()
+    )
+);
+
+-- Les garages peuvent voir les rapports de leurs pannes
+CREATE POLICY "Garages can view breakdown reports"
+ON reports FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM breakdowns b
+        JOIN garages g ON b.garage_id = g.id
+        WHERE b.id = reports.breakdown_id AND g.user_id = auth.uid()
+    )
+);
+
+-- ============================================
+-- POLICIES: reviews
+-- ============================================
+
+-- Les utilisateurs peuvent créer des avis
+CREATE POLICY "Users can create reviews"
+ON reviews FOR INSERT
+WITH CHECK (reviewer_id = auth.uid());
+
+-- Tout le monde peut voir les avis
+CREATE POLICY "Anyone can view reviews"
+ON reviews FOR SELECT
+USING (true);
+
+-- ============================================
+-- POLICIES: notifications
+-- ============================================
+
+-- Les utilisateurs peuvent voir leurs propres notifications
+CREATE POLICY "Users can view own notifications"
+ON notifications FOR SELECT
+USING (user_id = auth.uid());
+
+-- Les utilisateurs peuvent mettre à jour (marquer comme lu) leurs notifications
+CREATE POLICY "Users can update own notifications"
+ON notifications FOR UPDATE
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());
+
+-- ============================================
+-- POLICIES: refresh_tokens
+-- ============================================
+
+-- Les utilisateurs peuvent gérer leurs propres tokens
+CREATE POLICY "Users can manage own tokens"
+ON refresh_tokens FOR ALL
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());

@@ -1,0 +1,150 @@
+﻿import { API_URL } from './constants';
+
+type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+interface ApiOptions {
+  method?: RequestMethod;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
+class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
+  const { method = 'GET', body, headers = {} } = options;
+
+  // Get token from localStorage
+  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+
+  const config: RequestInit = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...headers,
+    },
+  };
+
+  if (body) {
+    config.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, config);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'An error occurred' }));
+    throw new ApiError(response.status, error.message || 'An error occurred');
+  }
+
+  // Handle empty responses
+  const text = await response.text();
+  return text ? JSON.parse(text) : ({} as T);
+}
+
+export const api = {
+  get: <T>(endpoint: string) => request<T>(endpoint),
+  post: <T>(endpoint: string, body?: unknown) => request<T>(endpoint, { method: 'POST', body }),
+  put: <T>(endpoint: string, body?: unknown) => request<T>(endpoint, { method: 'PUT', body }),
+  patch: <T>(endpoint: string, body?: unknown) => request<T>(endpoint, { method: 'PATCH', body }),
+  delete: <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' }),
+};
+
+// Auth API
+export const authApi = {
+  register: (data: { email: string; password: string; firstName?: string; lastName?: string; phone?: string; role?: string }) =>
+    api.post<{ user: any; accessToken: string; refreshToken: string }>('/auth/register', data),
+  
+  login: (data: { email: string; password: string }) =>
+    api.post<{ user: any; accessToken: string; refreshToken: string }>('/auth/login', data),
+  
+  refresh: (refreshToken: string) =>
+    api.post<{ accessToken: string; refreshToken: string }>('/auth/refresh', { refreshToken }),
+};
+
+// Users API
+export const usersApi = {
+  getProfile: () => api.get<any>('/users/me'),
+  updateProfile: (data: any) => api.patch<any>('/users/me', data),
+};
+
+// Vehicles API
+export const vehiclesApi = {
+  getAll: () => api.get<any[]>('/vehicles'),
+  getOne: (id: string) => api.get<any>(`/vehicles/${id}`),
+  create: (data: any) => api.post<any>('/vehicles', data),
+  update: (id: string, data: any) => api.patch<any>(`/vehicles/${id}`, data),
+  delete: (id: string) => api.delete(`/vehicles/${id}`),
+};
+
+// Garages API
+export const garagesApi = {
+  getAll: (page = 1, limit = 10) => api.get<any>(`/garages?page=${page}&limit=${limit}`),
+  getNearby: (lat: number, lng: number, radius = 10) =>
+    api.get<any[]>(`/garages/nearby?latitude=${lat}&longitude=${lng}&radiusKm=${radius}`),
+  getOne: (id: string) => api.get<any>(`/garages/${id}`),
+  create: (data: any) => api.post<any>('/garages', data),
+  update: (id: string, data: any) => api.patch<any>(`/garages/${id}`, data),
+};
+
+// Breakdowns API
+export const breakdownsApi = {
+  create: (data: any) => api.post<any>('/breakdowns', data),
+  getMyRequests: (page = 1, limit = 10) => api.get<any>(`/breakdowns/my-requests?page=${page}&limit=${limit}`),
+  getByGarage: (garageId: string, page = 1) => api.get<any>(`/breakdowns/garage/${garageId}?page=${page}`),
+  getPendingForGarage: (garageId: string) => api.get<any[]>(`/breakdowns/garage/${garageId}/pending`),
+  getActiveMissions: () => api.get<any[]>('/breakdowns/mechanic/active'),
+  getOne: (id: string) => api.get<any>(`/breakdowns/${id}`),
+  updateStatus: (id: string, status: string, reason?: string) =>
+    api.patch<any>(`/breakdowns/${id}/status`, { status, cancellationReason: reason }),
+  assignMechanic: (id: string, mechanicId: string) =>
+    api.patch<any>(`/breakdowns/${id}/assign-mechanic`, { mechanicId }),
+};
+
+// Quotes API
+export const quotesApi = {
+  create: (data: any) => api.post<any>('/quotes', data),
+  getByBreakdown: (breakdownId: string) => api.get<any[]>(`/quotes/breakdown/${breakdownId}`),
+  getOne: (id: string) => api.get<any>(`/quotes/${id}`),
+  accept: (id: string) => api.patch<any>(`/quotes/${id}/accept`),
+  reject: (id: string, reason?: string) => api.patch<any>(`/quotes/${id}/reject`, { reason }),
+};
+
+// Payments API
+export const paymentsApi = {
+  initiate: (breakdownId: string, paymentType: 'diagnostic' | 'repair') =>
+    api.post<{ authorizationUrl: string; reference: string }>('/payments/initiate', { breakdownId, paymentType }),
+  verify: (reference: string) => api.get<any>(`/payments/verify/${reference}`),
+  getByBreakdown: (breakdownId: string) => api.get<any[]>(`/payments/breakdown/${breakdownId}`),
+  getMyPayments: (page = 1) => api.get<any>(`/payments/my-payments?page=${page}`),
+};
+
+// Reports API
+export const reportsApi = {
+  create: (data: any) => api.post<any>('/reports', data),
+  getByBreakdown: (breakdownId: string) => api.get<any[]>(`/reports/breakdown/${breakdownId}`),
+  getFinal: (breakdownId: string) => api.get<any>(`/reports/breakdown/${breakdownId}/final`),
+  sign: (id: string, signatureUrl: string) => api.patch<any>(`/reports/${id}/sign`, { signatureUrl }),
+};
+
+// Notifications API
+export const notificationsApi = {
+  getAll: (page = 1) => api.get<any>(`/notifications?page=${page}`),
+  getUnreadCount: () => api.get<number>('/notifications/unread-count'),
+  markAsRead: (id: string) => api.patch<any>(`/notifications/${id}/read`),
+  markAllAsRead: () => api.patch('/notifications/read-all'),
+  delete: (id: string) => api.delete(`/notifications/${id}`),
+};
+
+// Mechanics API
+export const mechanicsApi = {
+  getByGarage: (garageId: string) => api.get<any[]>(`/mechanics/garage/${garageId}`),
+  getMyProfile: () => api.get<any>('/mechanics/me'),
+  updateStatus: (status: string) => api.patch<any>('/mechanics/me/status', { status }),
+  updateLocation: (lat: number, lng: number) =>
+    api.patch<any>('/mechanics/me/location', { latitude: lat, longitude: lng }),
+};

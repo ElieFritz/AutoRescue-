@@ -1,0 +1,79 @@
+﻿import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Database } from './types/database.types';
+
+@Injectable()
+export class SupabaseService implements OnModuleInit {
+  private readonly logger = new Logger(SupabaseService.name);
+  private supabase: SupabaseClient<Database>;
+  private supabaseAdmin: SupabaseClient<Database>;
+
+  constructor(private configService: ConfigService) {}
+
+  async onModuleInit() {
+    const supabaseUrl = this.configService.get<string>('supabase.url');
+    const supabaseAnonKey = this.configService.get<string>('supabase.anonKey');
+    const supabaseServiceRoleKey = this.configService.get<string>('supabase.serviceRoleKey');
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      this.logger.warn('Supabase credentials not configured. Database operations will fail.');
+      return;
+    }
+
+    // Client with anon key (respects RLS)
+    this.supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: false,
+      },
+    });
+
+    // Admin client (bypasses RLS)
+    if (supabaseServiceRoleKey) {
+      this.supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceRoleKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+    }
+
+    this.logger.log('✅ Supabase client initialized');
+  }
+
+  /**
+   * Get the Supabase client (respects RLS)
+   */
+  getClient(): SupabaseClient<Database> {
+    return this.supabase;
+  }
+
+  /**
+   * Get the Supabase admin client (bypasses RLS)
+   * Use with caution - only for admin operations
+   */
+  getAdminClient(): SupabaseClient<Database> {
+    return this.supabaseAdmin;
+  }
+
+  /**
+   * Get authenticated client for a specific user
+   */
+  getClientForUser(accessToken: string): SupabaseClient<Database> {
+    const supabaseUrl = this.configService.get<string>('supabase.url');
+    const supabaseAnonKey = this.configService.get<string>('supabase.anonKey');
+
+    return createClient<Database>(supabaseUrl!, supabaseAnonKey!, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
+  }
+}

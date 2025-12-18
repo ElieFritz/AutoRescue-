@@ -1,0 +1,363 @@
+﻿'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { 
+  ArrowLeft, 
+  MapPin, 
+  Car, 
+  Clock, 
+  Phone, 
+  User,
+  CheckCircle,
+  XCircle,
+  Navigation,
+  Wrench,
+  Send
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { breakdownsApi, mechanicsApi } from '@/lib/api';
+import { BREAKDOWN_STATUS_LABELS, BREAKDOWN_STATUS_COLORS } from '@/lib/constants';
+import { formatDate, formatCurrency } from '@/lib/utils';
+import { toast } from 'sonner';
+
+const STATUS_FLOW = [
+  'pending',
+  'accepted',
+  'mechanic_assigned',
+  'mechanic_on_way',
+  'mechanic_arrived',
+  'diagnosing',
+  'quote_sent',
+  'quote_accepted',
+  'repairing',
+  'completed',
+];
+
+export default function GarageBreakdownDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const [breakdown, setBreakdown] = useState<any>(null);
+  const [mechanics, setMechanics] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedMechanic, setSelectedMechanic] = useState<string>('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [breakdownData, mechanicsData] = await Promise.all([
+          breakdownsApi.getOne(params.id as string),
+          mechanicsApi.getAll().catch(() => []),
+        ]);
+        setBreakdown(breakdownData);
+        setMechanics(Array.isArray(mechanicsData) ? mechanicsData : []);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast.error('Erreur lors du chargement');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (params.id) {
+      fetchData();
+    }
+  }, [params.id]);
+
+  const handleAccept = async () => {
+    setIsUpdating(true);
+    try {
+      await breakdownsApi.accept(params.id as string);
+      setBreakdown({ ...breakdown, status: 'accepted' });
+      toast.success('Demande acceptee');
+    } catch (error: any) {
+      toast.error(error.message || 'Erreur');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    setIsUpdating(true);
+    try {
+      await breakdownsApi.updateStatus(params.id as string, newStatus);
+      setBreakdown({ ...breakdown, status: newStatus });
+      toast.success('Statut mis a jour');
+    } catch (error: any) {
+      toast.error(error.message || 'Erreur');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const openInMaps = () => {
+    if (breakdown?.latitude && breakdown?.longitude) {
+      window.open(
+        `https://www.google.com/maps/dir/?api=1&destination=${breakdown.latitude},${breakdown.longitude}`,
+        '_blank'
+      );
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-48" />
+        <Skeleton className="h-32" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (!breakdown) {
+    return (
+      <div className="text-center py-12">
+        <XCircle className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+        <h2 className="text-xl font-bold mb-2">Demande non trouvee</h2>
+        <Link href="/garage/requests">
+          <Button>Retour aux demandes</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const currentStatusIndex = STATUS_FLOW.indexOf(breakdown.status);
+  const nextStatus = STATUS_FLOW[currentStatusIndex + 1];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/garage/requests">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold">{breakdown.title}</h1>
+            <p className="text-sm text-muted-foreground">
+              {formatDate(breakdown.created_at)}
+            </p>
+          </div>
+        </div>
+        <Badge className={BREAKDOWN_STATUS_COLORS[breakdown.status] || ''} >
+          {BREAKDOWN_STATUS_LABELS[breakdown.status] || breakdown.status}
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Client info */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Client
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">
+                      {breakdown.motorist?.first_name} {breakdown.motorist?.last_name}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {breakdown.motorist?.email}
+                    </p>
+                  </div>
+                  {breakdown.motorist?.phone && (
+                    <a href={`tel:${breakdown.motorist.phone}`}>
+                      <Button variant="outline">
+                        <Phone className="h-4 w-4 mr-2" />
+                        Appeler
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Breakdown details */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Details de la panne</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {breakdown.description && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Description</p>
+                    <p>{breakdown.description}</p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Type</p>
+                    <p className="font-medium">{breakdown.breakdown_type || 'Non specifie'}</p>
+                  </div>
+                  {breakdown.vehicle && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Vehicule</p>
+                      <p className="font-medium">
+                        {breakdown.vehicle.brand} {breakdown.vehicle.model}
+                        {breakdown.vehicle.license_plate && ` - ${breakdown.vehicle.license_plate}`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {(breakdown.latitude && breakdown.longitude) && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-2">Localisation</p>
+                    <Button variant="outline" onClick={openInMaps} className="w-full">
+                      <Navigation className="h-4 w-4 mr-2" />
+                      Ouvrir dans Google Maps
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* Actions sidebar */}
+        <div className="space-y-6">
+          {/* Status actions */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {breakdown.status === 'pending' && (
+                  <Button 
+                    className="w-full" 
+                    onClick={handleAccept}
+                    disabled={isUpdating}
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Accepter la demande
+                  </Button>
+                )}
+
+                {breakdown.status === 'accepted' && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Assigner un mecanicien</Label>
+                      <Select value={selectedMechanic} onValueChange={setSelectedMechanic}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choisir..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {mechanics.map((m: any) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.user?.first_name} {m.user?.last_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button 
+                      className="w-full"
+                      onClick={() => handleUpdateStatus('mechanic_assigned')}
+                      disabled={isUpdating || !selectedMechanic}
+                    >
+                      <Wrench className="h-4 w-4 mr-2" />
+                      Assigner
+                    </Button>
+                  </div>
+                )}
+
+                {nextStatus && !['pending', 'accepted'].includes(breakdown.status) && breakdown.status !== 'completed' && (
+                  <Button 
+                    className="w-full"
+                    onClick={() => handleUpdateStatus(nextStatus)}
+                    disabled={isUpdating}
+                  >
+                    Passer a: {BREAKDOWN_STATUS_LABELS[nextStatus]}
+                  </Button>
+                )}
+
+                {breakdown.status === 'completed' && (
+                  <div className="text-center py-4">
+                    <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                    <p className="font-medium text-green-600">Intervention terminee</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Quick info */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Recapitulatif</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Cree le</span>
+                  <span>{formatDate(breakdown.created_at)}</span>
+                </div>
+                {breakdown.accepted_at && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Accepte le</span>
+                    <span>{formatDate(breakdown.accepted_at)}</span>
+                  </div>
+                )}
+                {breakdown.diagnostic_fee && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Diagnostic</span>
+                    <span>{formatCurrency(breakdown.diagnostic_fee)}</span>
+                  </div>
+                )}
+                {breakdown.total_amount && (
+                  <div className="flex justify-between text-sm font-medium pt-2 border-t">
+                    <span>Total</span>
+                    <span className="text-primary">{formatCurrency(breakdown.total_amount)}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,89 @@
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { SupabaseService } from '../../database/supabase.service';
+
+@Injectable()
+export class VehiclesService {
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async findAll(ownerId: string) {
+    const { data, error } = await this.supabase.admin
+      .from('vehicles')
+      .select('*')
+      .eq('owner_id', ownerId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching vehicles:', error);
+      return [];
+    }
+    return data || [];
+  }
+
+  async findOne(id: string, ownerId: string) {
+    const { data, error } = await this.supabase.admin
+      .from('vehicles')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) throw new NotFoundException('Vehicule non trouve');
+    if (data.owner_id !== ownerId) throw new ForbiddenException();
+    return data;
+  }
+
+  async create(ownerId: string, createData: any) {
+    const insertData = {
+      owner_id: ownerId,
+      brand: createData.brand,
+      model: createData.model,
+      year: createData.year,
+      license_plate: createData.license_plate,
+      color: createData.color || null,
+      vehicle_type: createData.vehicle_type || 'car',
+    };
+
+    const { data, error } = await this.supabase.admin
+      .from('vehicles')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating vehicle:', error);
+      throw new BadRequestException(error.message);
+    }
+    return data;
+  }
+
+  async update(id: string, ownerId: string, updateData: any) {
+    await this.findOne(id, ownerId);
+    
+    const { data, error } = await this.supabase.admin
+      .from('vehicles')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating vehicle:', error);
+      throw new BadRequestException(error.message);
+    }
+    return data;
+  }
+
+  async remove(id: string, ownerId: string) {
+    await this.findOne(id, ownerId);
+    
+    const { error } = await this.supabase.admin
+      .from('vehicles')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting vehicle:', error);
+      throw new BadRequestException(error.message);
+    }
+    return { success: true };
+  }
+}

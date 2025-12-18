@@ -1,0 +1,57 @@
+﻿import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { GaragesService } from './garages.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { UserRole } from '../../common/enums';
+
+@ApiTags('Garages')
+@Controller('garages')
+export class GaragesController {
+  constructor(private readonly garagesService: GaragesService) {}
+
+  @Public()
+  @Get()
+  @ApiOperation({ summary: 'Lister tous les garages' })
+  async findAll() {
+    return this.garagesService.findAll();
+  }
+
+  @Public()
+  @Get('nearby')
+  @ApiOperation({ summary: 'Trouver les garages à proximité' })
+  @ApiQuery({ name: 'lat', type: Number })
+  @ApiQuery({ name: 'lng', type: Number })
+  @ApiQuery({ name: 'radius', type: Number, required: false })
+  async findNearby(
+    @Query('lat') lat: number,
+    @Query('lng') lng: number,
+    @Query('radius') radius?: number,
+  ) {
+    return this.garagesService.findNearby(lat, lng, radius || 10);
+  }
+
+  @Public()
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtenir un garage' })
+  async findOne(@Param('id') id: string) {
+    return this.garagesService.findOne(id);
+  }
+
+  @Post()
+  @ApiBearerAuth('access-token')
+  @Roles(UserRole.GARAGE, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Créer un garage' })
+  async create(@Body() createData: any, @CurrentUser() user: any) {
+    return this.garagesService.create(user.id, createData);
+  }
+
+  @Patch(':id')
+  @ApiBearerAuth('access-token')
+  @Roles(UserRole.GARAGE, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Modifier un garage' })
+  async update(@Param('id') id: string, @Body() updateData: any, @CurrentUser() user: any) {
+    return this.garagesService.update(id, user.id, updateData);
+  }
+}

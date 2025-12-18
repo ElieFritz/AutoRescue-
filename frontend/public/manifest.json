@@ -1,0 +1,11 @@
+{
+  "name": "AutoRescue",
+  "short_name": "AutoRescue",
+  "description": "Plateforme de dépannage automobile géolocalisé",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b98f5",
+  "orientation": "portrait-primary",
+  "icons": []
+}

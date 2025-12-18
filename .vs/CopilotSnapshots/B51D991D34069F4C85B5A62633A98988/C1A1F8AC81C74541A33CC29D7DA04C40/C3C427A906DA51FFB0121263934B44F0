@@ -1,0 +1,91 @@
+﻿import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { SupabaseService } from '../../database/supabase.service';
+
+@Injectable()
+export class GaragesService {
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async findAll() {
+    const { data, error } = await this.supabase.admin
+      .from('garages')
+      .select('*, owner:profiles(*)')
+      .eq('is_active', true)
+      .order('rating', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching garages:', error);
+      return [];
+    }
+    return data || [];
+  }
+
+  async findNearby(lat: number, lng: number, radiusKm: number = 10) {
+    // First try RPC function
+    const { data, error } = await this.supabase.admin
+      .rpc('find_nearby_garages', {
+        user_lat: lat,
+        user_lng: lng,
+        radius_km: radiusKm
+      });
+
+    if (error) {
+      console.error('RPC error, falling back to basic query:', error);
+      // Fallback: return all active garages if RPC doesn't exist
+      const { data: fallbackData } = await this.supabase.admin
+        .from('garages')
+        .select('*')
+        .eq('is_active', true);
+      
+      return (fallbackData || []).map((g: any) => ({
+        ...g,
+        garage_id: g.id,
+        garage_name: g.name,
+        distance_km: 5, // Placeholder distance
+        diagnostic_fee: g.diagnostic_fee || 5000,
+        travel_fee: g.travel_fee || 2000,
+      }));
+    }
+    return data || [];
+  }
+
+  async findOne(id: string) {
+    const { data, error } = await this.supabase.admin
+      .from('garages')
+      .select('*, owner:profiles(*), mechanics(*)')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) throw new NotFoundException('Garage non trouve');
+    return data;
+  }
+
+  async create(ownerId: string, createData: any) {
+    const { data, error } = await this.supabase.admin
+      .from('garages')
+      .insert({ ...createData, owner_id: ownerId })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating garage:', error);
+      throw new BadRequestException(error.message);
+    }
+    return data;
+  }
+
+  async update(id: string, ownerId: string, updateData: any) {
+    const { data, error } = await this.supabase.admin
+      .from('garages')
+      .update(updateData)
+      .eq('id', id)
+      .eq('owner_id', ownerId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating garage:', error);
+      throw new BadRequestException(error.message);
+    }
+    return data;
+  }
+}

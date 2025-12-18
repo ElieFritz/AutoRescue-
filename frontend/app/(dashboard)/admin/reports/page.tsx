@@ -1,0 +1,264 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { 
+  BarChart3, 
+  TrendingUp, 
+  Users, 
+  Building2, 
+  Car, 
+  DollarSign,
+  Download
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { breakdownsApi, garagesApi } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
+
+export default function AdminReportsPage() {
+  const [period, setPeriod] = useState('month');
+  const [isLoading, setIsLoading] = useState(true);
+  const [breakdowns, setBreakdowns] = useState<any[]>([]);
+  const [garages, setGarages] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [breakdownsData, garagesData] = await Promise.all([
+          breakdownsApi.getAll().catch(() => []),
+          garagesApi.getAll().catch(() => []),
+        ]);
+        setBreakdowns(Array.isArray(breakdownsData) ? breakdownsData : []);
+        setGarages(Array.isArray(garagesData) ? garagesData : []);
+      } catch (error) {
+        console.error('Error fetching data:', Crror);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const completedBreakdowns = breakdowns.filter(b => b.status === 'completed');
+  const revenue = completedBreakdowns.reduce((acc, b) => acc + (b.total_amount || 0), 0);
+
+  // Group breakdowns by garage
+  const garageStats = garages.map(garage => {
+    const garageBreakdowns = breakdowns.filter(b => b.garage_id === garage.id);
+    const garageCompleted = garageBreakdowns.filter(b => b.status === 'completed');
+    const garageRevenue = garageCompleted.reduce((acc, b) => acc + (b.total_amount || 0), 0);
+    return {
+      name: garage.name,
+      breakdowns: garageBreakdowns.length,
+      revenue: garageRevenue,
+    };
+  }).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+
+  // Group by month
+  const monthlyData = breakdowns.reduce((acc: any, b) => {
+    const date = new Date(b.created_at);
+    const month = date.toLocaleDateString('fr-FR', { month: 'short' });
+    if (!acc[month]) {
+      acc[month] = { breakdowns: 0, revenue: 0 };
+    }
+    acc[month].breakdowns++;
+    if (b.status === 'completed') {
+      acc[month].revenue += b.total_amount || 0;
+    }
+    return acc;
+  }, {});
+
+  const monthlyArray = Object.entries(monthlyData).map(([month, data]: [string, any]) => ({
+    month,
+    breakdowns: data.breakdowns,
+    revenue: data.revenue,
+  }));
+
+  const maxRevenue = Math.max(...monthlyArray.map(m => m.revenue), 1);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Rapports et Statistiques</h1>
+          <p className="text-muted-foreground">Analyse de la plateforme</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="week">Cette semaine</SelectItem>
+              <SelectItem value="month">Ce mois</SelectItem>
+              <SelectItem value="quarter">Ce trimestre</SelectItem>
+              <SelectItem value="year">Cette annee</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Exporter
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Revenus</p>
+                  <p className="text-2xl font-bold">{formatCurrency(revenue)}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <DollarSign className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Interventions</p>
+                  <p className="text-2xl font-bold">{breakdowns.length}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <Car className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Terminees</p>
+                  <p className="text-2xl font-bold">{completedBreakdowns.length}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                  <TrendingUp className="h-6 w-6 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Garages</p>
+                  <p className="text-2xl font-bold">{garages.length}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-yellow-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Evolution mensuelle
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {monthlyArray.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">Aucune donnee disponible</p>
+              ) : (
+                <div className="space-y-4">
+                  {monthlyArray.map((data) => (
+                    <div key={data.month} className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>{data.month}</span>
+                        <span className="text-muted-foreground">{formatCurrency(data.revenue)}</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary rounded-full transition-all"
+                          style={{ width: `${(data.revenue / maxRevenue) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Top garages
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {garageStats.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">Aucun garage avec interventions</p>
+              ) : (
+                <div className="space-y-4">
+                  {garageStats.map((garage, index) => (
+                    <div key={garage.name} className="flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">{garage.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {garage.breakdowns} interventions
+                        </p>
+                      </div>
+                      <p className="font-bold text-primary">{formatCurrency(garage.revenue)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
